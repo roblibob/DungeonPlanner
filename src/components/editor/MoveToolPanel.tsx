@@ -16,7 +16,6 @@ const CAMERA_PRESETS: PresetEntry[] = [
 
 type GroundEntry = { id: GroundPlane; label: string; swatch: string }
 const GROUND_OPTIONS: GroundEntry[] = [
-  { id: 'none',  label: 'None',  swatch: 'transparent' },
   { id: 'black', label: 'Black', swatch: '#0e0e0e' },
   { id: 'green', label: 'Green', swatch: '#2a4a1a' },
 ]
@@ -104,7 +103,7 @@ export function MoveToolPanel() {
             <Square size={12} strokeWidth={1.5} />
             <span>Ground</span>
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {GROUND_OPTIONS.map(({ id, label, swatch }) => {
               const active = groundPlane === id
               return (

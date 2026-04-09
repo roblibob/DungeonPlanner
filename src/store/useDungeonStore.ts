@@ -6,7 +6,7 @@ import type { ContentPackCategory, PropConnector } from '../content-packs/types'
 export type DungeonTool = 'move' | 'room' | 'prop'
 export type CameraMode = 'orbit'
 export type CameraPreset = 'perspective' | 'isometric' | 'top-down'
-export type GroundPlane = 'none' | 'black' | 'green'
+export type GroundPlane = 'black' | 'green'
 export type SelectedAssetIds = Record<ContentPackCategory, string | null>
 export type PaintedCells = Record<string, GridCell>
 
@@ -248,7 +248,7 @@ export const useDungeonStore = create<DungeonState>((set, get) => ({
   isPaintingStrokeActive: false,
   sceneLighting: { intensity: 1 },
   showGrid: true,
-  groundPlane: 'none',
+  groundPlane: 'black',
   activeCameraMode: 'perspective',
   cameraPreset: null,
   history: [],

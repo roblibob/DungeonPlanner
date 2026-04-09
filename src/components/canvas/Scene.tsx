@@ -71,8 +71,7 @@ function SceneContent() {
 
   const groundColor =
     groundPlane === 'black' ? '#0e0e0e' :
-    groundPlane === 'green' ? '#2a4a1a' :
-    null
+    /* green */ '#2a4a1a'
 
   return (
     <>
@@ -91,12 +90,10 @@ function SceneContent() {
       />
 
       {/* Ground plane — rendered at y=-0.01 so the grid helper at y=0.001 stays on top */}
-      {groundColor && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} renderOrder={-1}>
-          <planeGeometry args={[500, 500]} />
-          <meshStandardMaterial color={groundColor} roughness={1} metalness={0} />
-        </mesh>
-      )}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} renderOrder={-1}>
+        <planeGeometry args={[500, 500]} />
+        <meshStandardMaterial color={groundColor} roughness={1} metalness={0} />
+      </mesh>
 
       <Grid />
       <DungeonRoom />
