@@ -16,6 +16,7 @@ import {
   type SnappedGridPosition,
 } from '../../hooks/useSnapToGrid'
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
+import { triggerBuild } from '../../store/buildAnimations'
 import { FloorGridOverlay } from './FloorGridOverlay'
 
 type GridProps = {
@@ -122,6 +123,9 @@ export function Grid({ size = 120 }: GridProps) {
     if (cells.length > 0) {
       if (mode === 'paint') {
         paintCells(cells)
+        // Cascade FROM the release corner (opposite diagonal) TOWARD the stroke start.
+        // Tiles at currentCell appear first; tiles near startCell appear last.
+        triggerBuild(cells, currentCell)
       } else {
         eraseCells(cells)
       }

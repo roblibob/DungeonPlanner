@@ -1,4 +1,7 @@
-import { useMemo } from 'react'
+import { useRef, useMemo } from 'react'
+import type { ReactNode } from 'react'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
 import {
   GRID_SIZE,
   cellToWorldPosition,
@@ -9,7 +12,10 @@ import {
   useDungeonStore,
   type PaintedCells,
 } from '../../store/useDungeonStore'
+import { getBuildYOffset } from '../../store/buildAnimations'
 import { ContentPackInstance } from './ContentPackInstance'
+
+const WALL_EXTRA_DELAY_MS = 70
 
 type WallDirection = 'north' | 'south' | 'east' | 'west'
 
@@ -40,28 +46,63 @@ export function DungeonRoom() {
 
   return (
     <>
-      {cells.map((cell) => (
-        <ContentPackInstance
-          key={`floor:${getCellKey(cell)}`}
-          assetId={floorAssetId}
-          position={cellToWorldPosition(cell)}
-          variant="floor"
-          variantKey={getCellKey(cell)}
-        />
-      ))}
+      {cells.map((cell) => {
+        const key = getCellKey(cell)
+        return (
+          <AnimatedTileGroup key={`floor:${key}`} cellKey={key}>
+            <ContentPackInstance
+              assetId={floorAssetId}
+              position={cellToWorldPosition(cell)}
+              variant="floor"
+              variantKey={key}
+            />
+          </AnimatedTileGroup>
+        )
+      })}
 
-      {walls.map((wall) => (
-        <ContentPackInstance
-          key={wall.key}
-          assetId={wallAssetId}
-          position={wall.position}
-          rotation={wall.rotation}
-          variant="wall"
-          variantKey={wall.key}
-        />
-      ))}
+      {walls.map((wall) => {
+        // Wall key is "x:z:direction" — extract the floor cell key "x:z"
+        const floorKey = wall.key.split(':').slice(0, 2).join(':')
+        return (
+          <AnimatedTileGroup key={wall.key} cellKey={floorKey} extraDelay={WALL_EXTRA_DELAY_MS}>
+            <ContentPackInstance
+              assetId={wallAssetId}
+              position={wall.position}
+              rotation={wall.rotation}
+              variant="wall"
+              variantKey={wall.key}
+            />
+          </AnimatedTileGroup>
+        )
+      })}
     </>
   )
+}
+
+/**
+ * Wraps a tile in a group whose Y position is driven each frame by the build
+ * animation registry. When there is no active animation the group stays at Y=0
+ * with negligible overhead (one Map lookup per frame).
+ */
+function AnimatedTileGroup({
+  cellKey,
+  extraDelay = 0,
+  children,
+}: {
+  cellKey: string
+  extraDelay?: number
+  children: ReactNode
+}) {
+  const groupRef = useRef<THREE.Group>(null)
+
+  useFrame(() => {
+    const group = groupRef.current
+    if (!group) return
+    const y = getBuildYOffset(cellKey, performance.now(), extraDelay)
+    if (group.position.y !== y) group.position.y = y
+  })
+
+  return <group ref={groupRef}>{children}</group>
 }
 
 function deriveRoomWalls(paintedCells: PaintedCells): RoomWallInstance[] {
