@@ -242,7 +242,7 @@ export function Grid({ size = 120 }: GridProps) {
       {showGrid && (
         <FloorGridOverlay
           centerRef={mousePosRef}
-          radius={isMoveTool ? 10000 : 3.5}
+          radius={isMoveTool ? 10000 : 10}
           opacity={isMoveTool ? 0.15 : 0.35}
         />
       )}
