@@ -228,7 +228,7 @@ export function Grid({ size = 120 }: GridProps) {
   //   - Move tool in perspective/iso: hide (buttons live there; full coverage is confusing)
   const showOverlay = showGrid && (isTopDown || !isMoveTool)
   const overlayRadius  = isTopDown ? 10000 : 10
-  const overlayOpacity = isTopDown ? 0.15  : 0.35
+  const overlayOpacity = isTopDown ? 0.08  : 0.04
 
   return (
     <group>

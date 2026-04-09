@@ -17,7 +17,7 @@ import { useDungeonStore } from '../../store/useDungeonStore'
 import { GRID_SIZE, cellToWorldPosition } from '../../hooks/useSnapToGrid'
 
 const MAX_INSTANCES = 4096
-const OVERLAY_Y = 0.15
+const OVERLAY_Y = 0.26  // just above the tallest floor model geometry (measured max: 0.244)
 
 type Props = {
   /** XZ world-space cursor position — updated via pointer move */
@@ -45,7 +45,7 @@ export function FloorGridOverlay({ centerRef, radius = 3.5, opacity = 0.6 }: Pro
   // TSL material — created once, updated via uniforms
   const { material, mousePosU, revealRadiusU, lineOpacityU } = useMemo(() => {
     const gridSizeU      = uniform(GRID_SIZE)
-    const lineWidthU     = uniform(0.018)
+    const lineWidthU     = uniform(0.010)
     const lineOpacityU_  = uniform(opacity)
     const mousePosU_     = uniform(new THREE.Vector2(0, 0))
     const revealRadiusU_ = uniform(radius)
@@ -72,7 +72,7 @@ export function FloorGridOverlay({ centerRef, radius = 3.5, opacity = 0.6 }: Pro
     const mat = new MeshBasicNodeMaterial({
       transparent: true,
       depthWrite: false,
-      depthTest: false,
+      depthTest: true,
       side: THREE.DoubleSide,
     })
     // colorNode with alpha in w component — MeshBasicNodeMaterial respects vec4 alpha when transparent
