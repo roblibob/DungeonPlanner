@@ -13,9 +13,13 @@ const TRACKED_KEYS = new Set([
   'q', 'e',
 ])
 
+// Fixed world-space cardinal directions for straight-down (top-down) camera
+const WORLD_FORWARD = new THREE.Vector3(0, 0, -1)
+const WORLD_RIGHT   = new THREE.Vector3(1, 0, 0)
+
 function KeyboardCameraControls() {
   const pressedKeys = useRef(new Set<string>())
-  const { camera, controls } = useThree()
+  const { camera } = useThree()
   const isPaintingStrokeActive = useDungeonStore(
     (state) => state.isPaintingStrokeActive,
   )
@@ -40,26 +44,36 @@ function KeyboardCameraControls() {
     }
   }, [])
 
-  useFrame(() => {
+  useFrame((state) => {
     if (isPaintingStrokeActive) return
     const keys = pressedKeys.current
     if (keys.size === 0) return
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orbitControls = controls as any
+    const orbitControls = state.controls as any
     if (!orbitControls?.target) return
 
-    const target = orbitControls.target as THREE.Vector3
+    const target   = orbitControls.target as THREE.Vector3
     const distance = camera.position.distanceTo(target)
-    const speed = distance * PAN_SPEED
+    const speed    = distance * PAN_SPEED
 
-    const forward = new THREE.Vector3()
-      .subVectors(target, camera.position)
-      .setY(0)
-      .normalize()
-    const right = new THREE.Vector3()
-      .crossVectors(forward, new THREE.Vector3(0, 1, 0))
-      .normalize()
+    let forward: THREE.Vector3
+    let right: THREE.Vector3
+
+    if (activeCameraMode === 'top-down') {
+      // Camera is directly above — forward vector degenerates to zero, use world cardinals
+      forward = WORLD_FORWARD
+      right   = WORLD_RIGHT
+    } else {
+      const forwardRaw = new THREE.Vector3()
+        .subVectors(target, camera.position)
+        .setY(0)
+      if (forwardRaw.lengthSq() < 0.0001) return
+      forward = forwardRaw.normalize()
+      right = new THREE.Vector3()
+        .crossVectors(forward, new THREE.Vector3(0, 1, 0))
+        .normalize()
+    }
 
     const delta = new THREE.Vector3()
     if (keys.has('w') || keys.has('arrowup'))    delta.addScaledVector(forward,  speed)
@@ -72,7 +86,7 @@ function KeyboardCameraControls() {
       target.add(delta)
     }
 
-    // Q/E rotation only in perspective mode
+    // Q/E orbital rotation only in perspective mode
     if (activeCameraMode === 'perspective' && (keys.has('q') || keys.has('e'))) {
       const angle = keys.has('q') ? ROTATE_SPEED : -ROTATE_SPEED
       const offset = new THREE.Vector3().subVectors(camera.position, target)
@@ -94,6 +108,7 @@ export function Controls() {
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
 
   const isPerspective = activeCameraMode === 'perspective'
+  const isTopDown     = activeCameraMode === 'top-down'
 
   return (
     <>
@@ -104,8 +119,11 @@ export function Controls() {
         enablePan
         enableDamping
         dampingFactor={0.08}
-        minDistance={5}
-        maxDistance={48}
+        // Distance constraints for perspective/iso; zoom constraints for ortho top-down
+        {...(isTopDown
+          ? { minZoom: 0.15, maxZoom: 8 }
+          : { minDistance: 5, maxDistance: 48 }
+        )}
         maxPolarAngle={isPerspective ? Math.PI / 2.05 : undefined}
         target={[0, 0, 0]}
       />

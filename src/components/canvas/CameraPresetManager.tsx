@@ -8,14 +8,23 @@ const LERP_FACTOR = 0.08
 const ISO_DIST = 16
 const PERSP_DIST = Math.sqrt(9 * 9 + 11 * 11 + 9 * 9)
 
-type SphericalDest = { r: number; phi: number; theta: number; fov: number }
+// Half-height in world units visible at ortho zoom=1 (covers ~20 tiles vertically at GRID_SIZE=2)
+const ORTHO_FRUSTUM = 20
+
+type SphericalDest = {
+  r: number
+  phi: number
+  theta: number
+  fov?: number        // perspective only
+  orthoZoom?: number  // orthographic only
+}
 
 // All destinations are in spherical coords (r, phi, theta) relative to origin.
 // phi=0 is straight up, theta=0 is "north" (+Z).
 const PRESET_TARGETS: Record<CameraPreset, SphericalDest> = {
   perspective: { r: PERSP_DIST, phi: Math.acos(11 / PERSP_DIST), theta: Math.PI / 4, fov: 42 },
   isometric:   { r: ISO_DIST,   phi: Math.acos(1 / Math.sqrt(3)), theta: Math.PI / 4, fov: 42 },
-  'top-down':  { r: 24,         phi: 0.001,                       theta: 0,           fov: 80 },
+  'top-down':  { r: 24,         phi: 0.001,                       theta: 0,           orthoZoom: 1.0 },
 }
 
 const ORIGIN = new THREE.Vector3(0, 0, 0)
@@ -28,58 +37,133 @@ function lerpAngle(a: number, b: number, t: number): number {
   return a + diff * t
 }
 
+function makeOrthoCamera(aspect: number): THREE.OrthographicCamera {
+  const f = ORTHO_FRUSTUM
+  return new THREE.OrthographicCamera(-f * aspect, f * aspect, f, -f, 0.1, 300)
+}
+
 export function CameraPresetManager() {
-  const { camera, controls } = useThree()
+  const { camera, set, size } = useThree()
   const cameraPreset = useDungeonStore((state) => state.cameraPreset)
   const clearCameraPreset = useDungeonStore((state) => state.clearCameraPreset)
 
-  const destRef = useRef<SphericalDest | null>(null)
+  const destRef        = useRef<SphericalDest | null>(null)
+  const perspCamRef    = useRef<THREE.PerspectiveCamera | null>(null)
+  const orthoCamRef    = useRef<THREE.OrthographicCamera | null>(null)
+  const isOrthoActive  = useRef(false)
+
+  // Capture the original perspective camera once on mount
+  useEffect(() => {
+    if (!perspCamRef.current) {
+      perspCamRef.current = camera as THREE.PerspectiveCamera
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Keep ortho frustum in sync when the viewport resizes
+  useEffect(() => {
+    const cam = orthoCamRef.current
+    if (!cam || !isOrthoActive.current) return
+    const aspect = size.width / size.height
+    const f = ORTHO_FRUSTUM
+    cam.left   = -f * aspect
+    cam.right  =  f * aspect
+    cam.top    =  f
+    cam.bottom = -f
+    cam.updateProjectionMatrix()
+  }, [size])
 
   useEffect(() => {
     if (!cameraPreset) return
-    destRef.current = PRESET_TARGETS[cameraPreset]
-    clearCameraPreset()
-  }, [cameraPreset, clearCameraPreset])
 
-  useFrame(() => {
+    const dest = PRESET_TARGETS[cameraPreset]
+
+    if (cameraPreset === 'top-down' && !isOrthoActive.current) {
+      // Create ortho camera lazily, copy position so there's no visible jump
+      const aspect = size.width / size.height
+      if (!orthoCamRef.current) {
+        orthoCamRef.current = makeOrthoCamera(aspect)
+      } else {
+        // Ensure frustum matches current viewport
+        const f = ORTHO_FRUSTUM
+        orthoCamRef.current.left   = -f * aspect
+        orthoCamRef.current.right  =  f * aspect
+        orthoCamRef.current.top    =  f
+        orthoCamRef.current.bottom = -f
+      }
+      const ortho = orthoCamRef.current
+      ortho.position.copy(camera.position)
+      ortho.quaternion.copy(camera.quaternion)
+      ortho.zoom = 1.0
+      ortho.updateProjectionMatrix()
+      set({ camera: ortho })
+      isOrthoActive.current = true
+
+    } else if (cameraPreset !== 'top-down' && isOrthoActive.current) {
+      // Swap back to perspective camera, preserve position
+      const persp = perspCamRef.current
+      if (persp) {
+        persp.position.copy(camera.position)
+        persp.quaternion.copy(camera.quaternion)
+        set({ camera: persp })
+      }
+      isOrthoActive.current = false
+    }
+
+    destRef.current = dest
+    clearCameraPreset()
+  }, [cameraPreset, clearCameraPreset, camera, set, size])
+
+  useFrame((state) => {
     if (!destRef.current) return
 
-    const dest = destRef.current
+    const dest         = destRef.current
+    const activeCamera = state.camera
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orbitControls = controls as any
-    const perspCamera = camera as THREE.PerspectiveCamera
-    const orbitTarget = (orbitControls?.target as THREE.Vector3) ?? ORIGIN
+    const orbitControls = state.controls as any
+    const orbitTarget   = (orbitControls?.target as THREE.Vector3) ?? ORIGIN
 
     // Read current spherical coords
-    const offset = camera.position.clone().sub(orbitTarget)
-    const cur = new THREE.Spherical().setFromVector3(offset)
+    const offset = activeCamera.position.clone().sub(orbitTarget)
+    const cur    = new THREE.Spherical().setFromVector3(offset)
 
-    // Lerp each spherical component independently — smooth arc, no cartesian snap
     const newR     = THREE.MathUtils.lerp(cur.radius, dest.r,   LERP_FACTOR)
     const newPhi   = THREE.MathUtils.lerp(cur.phi,    dest.phi, LERP_FACTOR)
     const newTheta = lerpAngle(cur.theta, dest.theta, LERP_FACTOR)
-    const newFov   = THREE.MathUtils.lerp(perspCamera.fov, dest.fov, LERP_FACTOR)
+
+    // Perspective: lerp FOV — Orthographic: lerp zoom
+    let fovZoomArrived = true
+    if (isOrthoActive.current) {
+      const ortho = activeCamera as THREE.OrthographicCamera
+      const targetZoom = dest.orthoZoom ?? 1.0
+      const newZoom = THREE.MathUtils.lerp(ortho.zoom, targetZoom, LERP_FACTOR)
+      fovZoomArrived = Math.abs(newZoom - targetZoom) < 0.01
+      ortho.zoom = fovZoomArrived ? targetZoom : newZoom
+      ortho.updateProjectionMatrix()
+    } else {
+      const persp     = activeCamera as THREE.PerspectiveCamera
+      const targetFov = dest.fov ?? 42
+      const newFov    = THREE.MathUtils.lerp(persp.fov, targetFov, LERP_FACTOR)
+      fovZoomArrived  = Math.abs(newFov - targetFov) < 0.1
+      persp.fov = fovZoomArrived ? targetFov : newFov
+      persp.updateProjectionMatrix()
+    }
 
     const arrived =
       Math.abs(newR   - dest.r)     < 0.04 &&
       Math.abs(newPhi - dest.phi)   < 0.001 &&
       Math.abs(lerpAngle(newTheta, dest.theta, 1) - dest.theta) < 0.001 &&
-      Math.abs(newFov - dest.fov)   < 0.1
+      fovZoomArrived
 
     const finalR     = arrived ? dest.r     : newR
     const finalPhi   = arrived ? dest.phi   : newPhi
     const finalTheta = arrived ? dest.theta : newTheta
-    const finalFov   = arrived ? dest.fov   : newFov
 
-    // Write back via spherical → avoids the cartesian near-zero azimuth snap
-    camera.position
+    activeCamera.position
       .copy(orbitTarget)
       .add(new THREE.Vector3().setFromSpherical(
         new THREE.Spherical(finalR, Math.max(0.0001, finalPhi), finalTheta),
       ))
-
-    perspCamera.fov = finalFov
-    perspCamera.updateProjectionMatrix()
 
     if (orbitControls?.target) {
       if (arrived) {
