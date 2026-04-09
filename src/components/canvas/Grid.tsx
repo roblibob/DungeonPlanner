@@ -16,7 +16,7 @@ import {
   type SnappedGridPosition,
 } from '../../hooks/useSnapToGrid'
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
-import { triggerBuild } from '../../store/buildAnimations'
+import { triggerBuild, triggerDemolish, DEMOLISH_TOTAL_MS } from '../../store/buildAnimations'
 import { FloorGridOverlay } from './FloorGridOverlay'
 
 type GridProps = {
@@ -127,7 +127,11 @@ export function Grid({ size = 120 }: GridProps) {
         // Tiles near where you first clicked appear first.
         triggerBuild(cells, startCell)
       } else {
-        eraseCells(cells)
+        // Animate tiles sinking before removing them. The wave starts at the far/release
+        // corner and sweeps back toward the stroke start — opposite of the build cascade.
+        triggerDemolish(cells, currentCell)
+        const toErase = [...cells]
+        setTimeout(() => eraseCells(toErase), DEMOLISH_TOTAL_MS)
       }
     }
 
