@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import type { MutableRefObject } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
-import { useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { getContentPackAssetById } from '../../content-packs/registry'
 import type { ContentPackAsset, PropConnector } from '../../content-packs/types'
@@ -44,6 +45,7 @@ export function Grid({ size = 120 }: GridProps) {
   const [hoveredCell, setHoveredCell] = useState<SnappedGridPosition | null>(null)
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; z: number } | null>(null)
   const mousePosRef = useRef(new THREE.Vector2())
+  const cursorActiveRef = useRef(false)
   const [strokeMode, setStrokeMode] = useState<'paint' | 'erase' | null>(null)
   const [strokeStartCell, setStrokeStartCell] = useState<GridCell | null>(null)
   const [strokeCurrentCell, setStrokeCurrentCell] = useState<GridCell | null>(null)
@@ -152,6 +154,7 @@ export function Grid({ size = 120 }: GridProps) {
     setHoveredCell(snapped)
     setHoveredPoint(point)
     mousePosRef.current.set(point.x, point.z)
+    cursorActiveRef.current = true
 
     if (tool === 'room' && strokeModeRef.current) {
       updateStrokeState(
@@ -160,6 +163,12 @@ export function Grid({ size = 120 }: GridProps) {
         snapped.cell,
       )
     }
+  }
+
+  function updateCursorPosOnly(event: ThreeEvent<PointerEvent>) {
+    const point = raycaster.pointOnPlane(event)
+    mousePosRef.current.set(point.x, point.z)
+    cursorActiveRef.current = true
   }
 
   function handlePointerDown(event: ThreeEvent<PointerEvent>) {
@@ -232,12 +241,13 @@ export function Grid({ size = 120 }: GridProps) {
 
   return (
     <group>
-      {/* Invisible hit plane — only wired when an editing tool is active */}
+      {/* Hit plane — always tracks cursor world pos; editing events only when not in move tool */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        onPointerMove={isMoveTool ? undefined : updateHoveredCell}
-        onPointerOut={isMoveTool ? undefined : () => {
-          if (!strokeModeRef.current) {
+        onPointerMove={isMoveTool ? updateCursorPosOnly : updateHoveredCell}
+        onPointerOut={() => {
+          cursorActiveRef.current = false
+          if (!isMoveTool && !strokeModeRef.current) {
             setHoveredCell(null)
             setHoveredPoint(null)
           }
@@ -248,6 +258,8 @@ export function Grid({ size = 120 }: GridProps) {
         <planeGeometry args={[size, size]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
+
+      <CursorLight centerRef={mousePosRef} activeRef={cursorActiveRef} />
 
       {showOverlay && (
         <FloorGridOverlay
@@ -427,4 +439,52 @@ function getPropPlacement(
     ],
     rotation: matchingDirection.rotation,
   }
+}
+
+// ─── Cursor follow light ───────────────────────────────────────────────────
+
+const CURSOR_LIGHT_HEIGHT   = 3.0    // world units above the floor
+const CURSOR_LIGHT_COLOR    = '#ff9040'
+const CURSOR_LIGHT_INTENSITY = 10
+const CURSOR_LIGHT_DISTANCE  = 22
+const CURSOR_LIGHT_DECAY     = 1.8
+
+function CursorLight({
+  centerRef,
+  activeRef,
+}: {
+  centerRef: MutableRefObject<THREE.Vector2>
+  activeRef: MutableRefObject<boolean>
+}) {
+  const lightRef = useRef<THREE.PointLight>(null)
+
+  useFrame(({ clock }) => {
+    const light = lightRef.current
+    if (!light) return
+
+    // Smoothly snap visibility
+    light.visible = activeRef.current
+
+    // Follow cursor XZ
+    light.position.set(centerRef.current.x, CURSOR_LIGHT_HEIGHT, centerRef.current.y)
+
+    // Organic flicker — three layered sin waves
+    const t = clock.elapsedTime
+    const noise =
+      Math.sin(t * 11.3) * 0.12 +
+      Math.sin(t *  7.1) * 0.09 +
+      Math.sin(t * 23.7) * 0.05
+    light.intensity = CURSOR_LIGHT_INTENSITY * (1 + noise)
+  })
+
+  return (
+    <pointLight
+      ref={lightRef}
+      color={CURSOR_LIGHT_COLOR}
+      intensity={CURSOR_LIGHT_INTENSITY}
+      distance={CURSOR_LIGHT_DISTANCE}
+      decay={CURSOR_LIGHT_DECAY}
+      visible={false}
+    />
+  )
 }
