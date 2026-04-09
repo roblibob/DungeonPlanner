@@ -11,12 +11,14 @@
 <p align="center">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white&style=flat-square" />
   <img src="https://img.shields.io/badge/Three.js-0.182-black?logo=threedotjs&style=flat-square" />
-  <img src="https://img.shields.io/badge/WebGPU-preferred-orange?style=flat-square" />
   <img src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white&style=flat-square" />
   <img src="https://img.shields.io/badge/Tailwind-4-38BDF8?logo=tailwindcss&logoColor=white&style=flat-square" />
 </p>
 
 ---
+
+## Demo
+https://roblibob.github.io/dungeonplanner
 
 ## Features
 
