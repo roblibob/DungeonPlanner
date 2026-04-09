@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
+  // When deploying to a subfolder on GitHub Pages, set VITE_BASE_PATH=/dungeonplanner/
+  base: process.env.VITE_BASE_PATH ?? '/',
   assetsInclude: ['**/*.glb'],
   plugins: [react(), tailwindcss()],
   build: {
