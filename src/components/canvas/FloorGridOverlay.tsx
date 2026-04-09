@@ -45,7 +45,7 @@ export function FloorGridOverlay({ centerRef, radius = 3.5, opacity = 0.6 }: Pro
   // TSL material — created once, updated via uniforms
   const { material, mousePosU, revealRadiusU, lineOpacityU } = useMemo(() => {
     const gridSizeU      = uniform(GRID_SIZE)
-    const lineWidthU     = uniform(0.055)
+    const lineWidthU     = uniform(0.018)
     const lineOpacityU_  = uniform(opacity)
     const mousePosU_     = uniform(new THREE.Vector2(0, 0))
     const revealRadiusU_ = uniform(radius)
@@ -58,7 +58,7 @@ export function FloorGridOverlay({ centerRef, radius = 3.5, opacity = 0.6 }: Pro
     const distToEdge = min(cellUV, cellUV.oneMinus())
     const minDist    = distToEdge.x.min(distToEdge.y)
     const onLine     = float(1).sub(
-      smoothstep(lineWidthU, lineWidthU.add(float(0.01)), minDist),
+      smoothstep(lineWidthU, lineWidthU.add(float(0.005)), minDist),
     )
 
     // Soft radial reveal around cursor position
