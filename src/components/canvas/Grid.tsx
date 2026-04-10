@@ -577,18 +577,16 @@ function getOpeningPlacement(
     return da - db
   })
 
-  // Use the closest wall edge regardless of whether there's a painted neighbor
-  // (opening may be on any wall boundary)
   const dir = rankedDirections[0]
   const neighbor: GridCell = [snapped.cell[0] + dir.delta[0], snapped.cell[1] + dir.delta[1]]
-  const isActualWall = !paintedCells[getCellKey(neighbor)]
+  const isActualWall = isWallBoundary(snapped.cell, neighbor, paintedCells)
 
   const width: 1 | 2 | 3 =
     asset.metadata?.openingWidth === 2 ? 2 : asset.metadata?.openingWidth === 3 ? 3 : 1
   const wallKey = `${getCellKey(snapped.cell)}:${dir.name}`
   const segments = getOpeningSegments(wallKey, width)
 
-  // Validate all segments are actual wall boundaries
+  // Validate all segments are actual wall boundaries (exterior or inter-room)
   const valid =
     isActualWall &&
     segments.every((segKey) => {
@@ -600,7 +598,7 @@ function getOpeningPlacement(
       const cell: GridCell = [cx, cz]
       if (!paintedCells[getCellKey(cell)]) return false
       const n: GridCell = [cx + segDir.delta[0], cz + segDir.delta[1]]
-      return !paintedCells[getCellKey(n)]
+      return isWallBoundary(cell, n, paintedCells)
     })
 
   return {
@@ -615,6 +613,23 @@ function getOpeningPlacement(
     rotation: dir.rotation,
     valid,
   }
+}
+
+/**
+ * Returns true if there is a visible wall between `cell` and `neighbor`:
+ * - neighbor is unpainted (exterior wall), OR
+ * - neighbor is painted but belongs to a different room (inter-room wall)
+ */
+function isWallBoundary(
+  cell: GridCell,
+  neighbor: GridCell,
+  paintedCells: Record<string, PaintedCellRecord>,
+): boolean {
+  const neighborRecord = paintedCells[getCellKey(neighbor)]
+  if (!neighborRecord) return true // exterior wall
+  const cellRecord = paintedCells[getCellKey(cell)]
+  // Inter-room wall: both painted but different rooms
+  return (cellRecord?.roomId ?? null) !== (neighborRecord.roomId ?? null)
 }
 
 // ─── Cursor follow light ───────────────────────────────────────────────────

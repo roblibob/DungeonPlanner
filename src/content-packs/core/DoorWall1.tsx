@@ -4,7 +4,7 @@ import { useGLTF } from '@react-three/drei'
 import doorWall1AssetUrl from '../../assets/models/core/door_wall_1.glb'
 import type { ContentPackAsset, ContentPackComponentProps } from '../types'
 
-const PROP_PIVOT_OFFSET = [0, 0, 0] as const
+const PROP_PIVOT_OFFSET = [-1, 0, 0] as const
 
 export function OpeningDoorWall1(props: ContentPackComponentProps) {
   const gltf = useGLTF(doorWall1AssetUrl)
