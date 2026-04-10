@@ -37,6 +37,7 @@ export function DungeonObject({ object }: DungeonObjectProps) {
       <ContentPackInstance
         assetId={object.assetId}
         selected={selected}
+        variantKey={object.cellKey}
         userData={{ objectId: object.id }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}

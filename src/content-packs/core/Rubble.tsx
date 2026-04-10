@@ -5,8 +5,6 @@ import rubbleAssetUrl from '../../assets/models/core/rubble.glb'
 import rubble001AssetUrl from '../../assets/models/core/rubble_001.glb'
 import rubble002AssetUrl from '../../assets/models/core/rubble_002.glb'
 import rubble003AssetUrl from '../../assets/models/core/rubble_003.glb'
-import rubble004AssetUrl from '../../assets/models/core/rubble_004.glb'
-import rubble005AssetUrl from '../../assets/models/core/rubble_005.glb'
 
 import type { ContentPackAsset, ContentPackComponentProps } from '../types'
 
@@ -18,8 +16,6 @@ const RUBBLE_VARIANT_URLS = [
   rubble001AssetUrl,
   rubble002AssetUrl,
   rubble003AssetUrl,
-  rubble004AssetUrl,
-  rubble005AssetUrl,
 ] as const
 
 export function PropsRubble({ variantKey, ...props }: ContentPackComponentProps) {
