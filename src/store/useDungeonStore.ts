@@ -786,16 +786,35 @@ export const useDungeonStore = create<DungeonState>()(
     set((current) => {
       if (!current.rooms[id]) return current
       const previousSnapshot = cloneSnapshot(current)
+
+      // Collect and erase all cells belonging to this room
       const paintedCells = { ...current.paintedCells }
+      const removedCells: GridCell[] = []
       Object.entries(paintedCells).forEach(([key, record]) => {
-        if (record.roomId === id) paintedCells[key] = { ...record, roomId: null }
+        if (record.roomId === id) {
+          removedCells.push(record.cell)
+          delete paintedCells[key]
+        }
       })
+
       const rooms = { ...current.rooms }
       delete rooms[id]
+
+      const { placedObjects, occupancy, selection, wallOpenings } =
+        pruneInvalidConnectedProps(
+          current,
+          paintedCells,
+          removedCells,
+        )
+
       return {
         ...current,
         rooms,
         paintedCells,
+        placedObjects,
+        wallOpenings,
+        occupancy,
+        selection,
         history: [...current.history, previousSnapshot],
         future: [],
       }
