@@ -28,25 +28,25 @@ export function PostProcessingPanel() {
 
       <div className={`flex flex-col gap-3 transition-opacity ${pp.enabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
         <SliderRow
-          label="Focus"
+          label="Focus Y"
           value={pp.focusDistance}
-          min={1}
-          max={30}
-          step={0.5}
-          format={(v) => `${v.toFixed(1)}u`}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => `${(v * 100).toFixed(0)}%`}
           onChange={(v) => setPostProcessing({ focusDistance: v })}
         />
         <SliderRow
-          label="Depth"
+          label="Band"
           value={pp.focalLength}
           min={0.5}
           max={12}
           step={0.25}
-          format={(v) => `${v.toFixed(2)}u`}
+          format={(v) => `${v.toFixed(2)}`}
           onChange={(v) => setPostProcessing({ focalLength: v })}
         />
         <SliderRow
-          label="Bokeh"
+          label="Blur"
           value={pp.bokehScale}
           min={0.5}
           max={6}

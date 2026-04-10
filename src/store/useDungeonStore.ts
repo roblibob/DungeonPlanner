@@ -393,7 +393,7 @@ export const useDungeonStore = create<DungeonState>()(
   cameraMode: 'orbit',
   isPaintingStrokeActive: false,
   sceneLighting: { intensity: 1 },
-  postProcessing: { enabled: false, focusDistance: 8, focalLength: 3, bokehScale: 2 },
+  postProcessing: { enabled: false, focusDistance: 0.5, focalLength: 3, bokehScale: 2 },
   showGrid: true,
   groundPlane: 'black',
   activeCameraMode: 'perspective',

@@ -151,7 +151,7 @@ export function deserializeDungeon(json: string): SerializableState | null {
   if (version < 4 && !(raw as Record<string, unknown>).postProcessing) {
     raw = {
       ...(raw as Record<string, unknown>),
-      postProcessing: { enabled: false, focusDistance: 8, focalLength: 3, bokehScale: 2 },
+      postProcessing: { enabled: false, focusDistance: 0.5, focalLength: 3, bokehScale: 2 },
     }
   }
 

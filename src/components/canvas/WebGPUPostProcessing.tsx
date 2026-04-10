@@ -1,74 +1,45 @@
 /**
  * WebGPU-native post-processing using Three.js TSL nodes.
- * Renders DoF (tilt-shift miniature) + Outline (selection highlight).
  *
- * Must run inside a R3F Canvas that uses WebGPURenderer.
+ * Uses our own postprocessing library (src/postprocessing/) which imports only
+ * from 'three/tsl' and 'three/webgpu' — both proper package exports.
+ *
+ * Effects:
+ *   - Tilt-shift DoF: horizontal focus band blurs foreground/background
+ *   - Selection outline: inverted-hull in scene (handled by ContentPackInstance)
  */
 import { useEffect, useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { pass, uniform, color } from 'three/tsl'
-import { dof } from 'three/examples/jsm/tsl/display/DepthOfFieldNode.js'
-import { outline } from 'three/examples/jsm/tsl/display/OutlineNode.js'
+import { uniform } from 'three/tsl'
+import { tiltShift } from '../../postprocessing/tiltShift'
 import { useDungeonStore } from '../../store/useDungeonStore'
-import { getRegisteredObject } from './objectRegistry'
 
 export function WebGPUPostProcessing() {
   const { gl: renderer, scene, camera, size } = useThree()
   const postProcessingRef = useRef<THREE.PostProcessing | null>(null)
 
-  // Uniforms — updated each frame from store without re-creating the pipeline
-  const focusDistanceUniform = useRef(uniform(8))
-  const focalLengthUniform = useRef(uniform(3))
-  const bokehScaleUniform = useRef(uniform(2))
-  const edgeStrengthUniform = useRef(uniform(3.0))
-
-  // Mutable ref to the selectedObjects array used by the outline pass
-  const selectedObjectsRef = useRef<THREE.Object3D[]>([])
+  // Uniforms updated each frame — no pipeline rebuild on value changes
+  const focusCenterUniform = useRef(uniform(0.5))
+  const focusRangeUniform  = useRef(uniform(0.15))
+  const blurRadiusUniform  = useRef(uniform(6))
 
   const settings = useDungeonStore((state) => state.postProcessing)
-  const selection = useDungeonStore((state) => state.selection)
 
-  // Keep selectedObjects in sync with current selection (mutate in-place — the
-  // OutlineNode holds a reference to this same array)
-  useEffect(() => {
-    selectedObjectsRef.current.length = 0
-    if (selection) {
-      const obj = getRegisteredObject(selection)
-      if (obj) selectedObjectsRef.current.push(obj)
-    }
-  }, [selection])
-
-  // Build / rebuild the TSL pipeline when renderer/scene/camera/size change
+  // Build TSL pipeline when renderer / scene / camera / size change
   useEffect(() => {
     if (!renderer || !scene || !camera) return
 
-    const scenePass = pass(scene, camera)
-
-    // Depth of field
-    const viewZ = scenePass.getViewZNode()
-    const dofPass = dof(
-      scenePass,
-      viewZ,
-      focusDistanceUniform.current,
-      focalLengthUniform.current,
-      bokehScaleUniform.current,
-    )
-
-    // Outline (selection highlight)
-    const outlinePass = outline(scene, camera, {
-      selectedObjects: selectedObjectsRef.current,
-      edgeThickness: uniform(1.5),
-      edgeGlow: uniform(0.3),
+    const outputNode = tiltShift(scene, camera, {
+      focusCenter: focusCenterUniform.current,
+      focusRange:  focusRangeUniform.current,
+      blurRadius:  blurRadiusUniform.current,
     })
-    const { visibleEdge } = outlinePass
-    const outlineColor = visibleEdge
-      .mul(color(0x7dd3fc))
-      .mul(edgeStrengthUniform.current)
 
-    // Compose: DoF base + sharp outline on top
-    const postProcessing = new THREE.PostProcessing(renderer as unknown as THREE.WebGPURenderer)
-    postProcessing.outputNode = outlineColor.add(dofPass)
+    const postProcessing = new THREE.PostProcessing(
+      renderer as unknown as THREE.WebGPURenderer,
+    )
+    postProcessing.outputNode = outputNode
     postProcessingRef.current = postProcessing
 
     return () => {
@@ -77,16 +48,21 @@ export function WebGPUPostProcessing() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderer, scene, camera, size])
 
-  // Sync uniform values from store every frame (no pipeline rebuild needed)
+  // Sync uniforms + render each frame
   useFrame(() => {
     if (!postProcessingRef.current) return
 
-    focusDistanceUniform.current.value = settings.focusDistance
-    focalLengthUniform.current.value = settings.focalLength
-    bokehScaleUniform.current.value = settings.bokehScale
+    // Map store settings to shader uniforms
+    // focusDistance → vertical centre (store: 0–1, shader: 0–1)
+    focusCenterUniform.current.value = settings.focusDistance
+    // focalLength → focus band half-width (store: 0.5–12 → remap to 0.02–0.4)
+    focusRangeUniform.current.value = Math.max(0.02, settings.focalLength / 30)
+    // bokehScale → blur radius in pixels (store: 0.5–6 → multiply to pixel range)
+    blurRadiusUniform.current.value = settings.bokehScale * 4
 
     postProcessingRef.current.render()
   }, 1)
 
   return null
 }
+
