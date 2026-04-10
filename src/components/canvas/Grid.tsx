@@ -488,6 +488,22 @@ function applyFloorRotation(
   return { ...placement, rotation: [0, yRotation, 0] }
 }
 
+/**
+ * Returns true if there is a visible wall between `cell` and `neighbor`:
+ * - neighbor is unpainted (exterior wall), OR
+ * - neighbor is painted but belongs to a different room (inter-room wall)
+ */
+function isWallBoundary(
+  cell: GridCell,
+  neighbor: GridCell,
+  paintedCells: Record<string, PaintedCellRecord>,
+): boolean {
+  const neighborRecord = paintedCells[getCellKey(neighbor)]
+  if (!neighborRecord) return true
+  const cellRecord = paintedCells[getCellKey(cell)]
+  return (cellRecord?.roomId ?? null) !== (neighborRecord.roomId ?? null)
+}
+
 function getPropPlacement(
   asset: ContentPackAsset,
   point: { x: number; y: number; z: number },
@@ -526,7 +542,7 @@ function getPropPlacement(
 
   const matchingDirection = rankedDirections.find(({ delta }) => {
     const neighbor: GridCell = [snapped.cell[0] + delta[0], snapped.cell[1] + delta[1]]
-    return !paintedCells[getCellKey(neighbor)]
+    return isWallBoundary(snapped.cell, neighbor, paintedCells)
   })
 
   if (!matchingDirection) {
@@ -613,23 +629,6 @@ function getOpeningPlacement(
     rotation: dir.rotation,
     valid,
   }
-}
-
-/**
- * Returns true if there is a visible wall between `cell` and `neighbor`:
- * - neighbor is unpainted (exterior wall), OR
- * - neighbor is painted but belongs to a different room (inter-room wall)
- */
-function isWallBoundary(
-  cell: GridCell,
-  neighbor: GridCell,
-  paintedCells: Record<string, PaintedCellRecord>,
-): boolean {
-  const neighborRecord = paintedCells[getCellKey(neighbor)]
-  if (!neighborRecord) return true // exterior wall
-  const cellRecord = paintedCells[getCellKey(cell)]
-  // Inter-room wall: both painted but different rooms
-  return (cellRecord?.roomId ?? null) !== (neighborRecord.roomId ?? null)
 }
 
 // ─── Cursor follow light ───────────────────────────────────────────────────
