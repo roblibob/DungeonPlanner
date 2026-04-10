@@ -15,7 +15,9 @@ export function ScenePanel() {
   const propsByRoom = Object.values(placedObjects).reduce<
     Record<string, typeof placedObjects[string][]>
   >((acc, obj) => {
-    const roomId = paintedCells[obj.cellKey]?.roomId ?? null
+    // obj.cellKey is e.g. "0:0:north" — look up by the bare cell position key
+    const posCellKey = `${obj.cell[0]}:${obj.cell[1]}`
+    const roomId = paintedCells[posCellKey]?.roomId ?? null
     if (!roomId) return acc
     if (!acc[roomId]) acc[roomId] = []
     acc[roomId].push(obj)
