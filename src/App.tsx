@@ -37,15 +37,15 @@ function RightPanel() {
           {tool === 'move' ? 'Camera' : tool === 'room' ? 'Room' : tool === 'opening' ? 'Openings' : 'Props'}
         </p>
         {tool === 'move' && <MoveToolPanel />}
+        {tool === 'move' && <PostProcessingPanel />}
         {tool === 'room' && <RoomToolPanel />}
         {tool === 'prop' && <PropToolPanel />}
         {tool === 'opening' && <OpeningToolPanel />}
       </div>
 
-      {/* Layers + Lens — always visible at the bottom */}
+      {/* Layers — always visible at the bottom */}
       <div className="shrink-0 border-t border-stone-800/60 p-5 flex flex-col gap-6">
         <LayerPanel />
-        <PostProcessingPanel />
       </div>
     </aside>
   )
@@ -186,7 +186,7 @@ function App() {
             {/* Tool hint overlay */}
             <div className="pointer-events-none absolute left-4 top-4 rounded-2xl border border-amber-300/15 bg-stone-950/78 px-4 py-3 backdrop-blur">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-300/80">
-                {tool === 'move' ? 'Move' : tool === 'room' ? 'Room' : 'Prop'}
+                {tool === 'move' ? 'Camera' : tool === 'room' ? 'Room' : 'Prop'}
               </p>
               <p className="mt-1.5 text-xs text-stone-400">{toolHint}</p>
             </div>

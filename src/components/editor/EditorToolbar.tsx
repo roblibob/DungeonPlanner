@@ -15,7 +15,7 @@ const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strok
   { id: 'room',    Icon: Blocks,  label: 'Room' },
   { id: 'prop',    Icon: Box,      label: 'Prop' },
   { id: 'opening', Icon: DoorOpen, label: 'Opening' },
-  { id: 'move',    Icon: Video,    label: 'Move' },
+  { id: 'move',    Icon: Video,    label: 'Camera' },
 ]
 
 export function EditorToolbar() {
