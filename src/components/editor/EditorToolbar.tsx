@@ -4,18 +4,18 @@ import {
   DoorOpen,
   Download,
   Grid2X2,
-  Hand,
   Redo2,
   Undo2,
   Upload,
+  Video,
 } from 'lucide-react'
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
 
 const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; label: string }[] = [
-  { id: 'move', Icon: Hand,     label: 'Move' },
-  { id: 'room', Icon: Grid2X2,  label: 'Room' },
-  { id: 'prop', Icon: Box,      label: 'Prop' },
+  { id: 'room',    Icon: Grid2X2,  label: 'Room' },
+  { id: 'prop',    Icon: Box,      label: 'Prop' },
   { id: 'opening', Icon: DoorOpen, label: 'Opening' },
+  { id: 'move',    Icon: Video,    label: 'Move' },
 ]
 
 export function EditorToolbar() {

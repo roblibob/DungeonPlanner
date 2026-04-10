@@ -1,14 +1,14 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
-import propsPillarAssetUrl from '../../assets/models/core/pillar.glb'
+import propsPillarWallAssetUrl from '../../assets/models/core/pillar.glb'
 import type { ContentPackAsset, ContentPackComponentProps } from '../types'
 
 // Adjust this to compensate for the authored pivot of the prop.
 const PROP_PIVOT_OFFSET = [0, 0, 0] as const
 
-export function PropsPillar(props: ContentPackComponentProps) {
-  const gltf = useGLTF(propsPillarAssetUrl)
+export function PropsPillarWall(props: ContentPackComponentProps) {
+  const gltf = useGLTF(propsPillarWallAssetUrl)
   const scene = useMemo(() => gltf.scene.clone(), [gltf.scene])
 
   return (
@@ -20,16 +20,16 @@ export function PropsPillar(props: ContentPackComponentProps) {
   )
 }
 
-useGLTF.preload(propsPillarAssetUrl)
+useGLTF.preload(propsPillarWallAssetUrl)
 
-export const propsPillarAsset: ContentPackAsset = {
-  id: 'core.props_pillar',
-  slug: 'props_pillar',
-  name: 'Pillar',
+export const propsPillarWallAsset: ContentPackAsset = {
+  id: 'core.props_pillar_wall',
+  slug: 'props_pillar_wall',
+  name: 'Pillar Wall',
   category: 'prop',
-  assetUrl: propsPillarAssetUrl,
-  Component: PropsPillar,
+  assetUrl: propsPillarWallAssetUrl,
+  Component: PropsPillarWall,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectsTo: 'WALL',
   },
 }
