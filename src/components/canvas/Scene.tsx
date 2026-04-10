@@ -8,8 +8,6 @@ import { CameraPresetManager } from './CameraPresetManager'
 import { DungeonObject } from './DungeonObject'
 import { DungeonRoom } from './DungeonRoom'
 import { useDungeonStore } from '../../store/useDungeonStore'
-import { EffectComposer, Outline, Selection } from '@react-three/postprocessing'
-import { BlendFunction } from 'postprocessing'
 
 async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
   const powerPreference =
@@ -117,22 +115,9 @@ function SceneContent() {
 
       <Grid />
       <DungeonRoom />
-      <Selection>
-        {objects.map((object) => (
-          <DungeonObject key={object.id} object={object} />
-        ))}
-        <EffectComposer autoClear={false} multisampling={0}>
-          <Outline
-            blendFunction={BlendFunction.ALPHA}
-            edgeStrength={4}
-            pulseSpeed={0}
-            visibleEdgeColor={0x7dd3fc}
-            hiddenEdgeColor={0x7dd3fc}
-            blur={false}
-            xRay={false}
-          />
-        </EffectComposer>
-      </Selection>
+      {objects.map((object) => (
+        <DungeonObject key={object.id} object={object} />
+      ))}
 
       <Controls />
       <CameraPresetManager />

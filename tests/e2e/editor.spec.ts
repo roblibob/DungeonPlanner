@@ -18,8 +18,10 @@ test.describe('Dungeon editor smoke flow', () => {
 
     await page.goto('/')
     await waitForDebugBridge(page)
-    await expect(page.getByText('Dungeon Maker')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Room Active/i })).toBeVisible()
+    // "Scene" heading is always visible at the top of the right panel (ScenePanel)
+    await expect(page.getByText('Scene', { exact: true })).toBeVisible()
+    // Room tool button is present in the toolbar
+    await expect(page.getByRole('button', { name: 'Room' })).toBeVisible()
     await expect(page.locator('canvas').first()).toBeVisible()
 
     expect(pageErrors).toEqual([])
