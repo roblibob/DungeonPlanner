@@ -6,7 +6,7 @@ import { RoomToolPanel } from './components/editor/RoomToolPanel'
 import { PropToolPanel } from './components/editor/PropToolPanel'
 import { OpeningToolPanel } from './components/editor/OpeningToolPanel'
 import { LayerPanel } from './components/editor/LayerPanel'
-import { RoomPanel } from './components/editor/RoomPanel'
+import { ScenePanel } from './components/editor/ScenePanel'
 import { useDungeonStore } from './store/useDungeonStore'
 import {
   cellToWorldPosition,
@@ -25,10 +25,15 @@ function RightPanel() {
   const tool = useDungeonStore((state) => state.tool)
   return (
     <aside className="flex h-full flex-col overflow-hidden border-l border-stone-800/80 bg-stone-950/85 backdrop-blur">
+      {/* Scene graph — always visible at the top */}
+      <div className="shrink-0 border-b border-stone-800/60 p-5">
+        <ScenePanel />
+      </div>
+
       {/* Tool-specific panel */}
       <div className="flex-1 overflow-y-auto p-5">
         <p className="mb-5 text-xs font-semibold uppercase tracking-[0.32em] text-sky-200/75">
-          {tool === 'move' ? 'Scene' : tool === 'room' ? 'Room' : tool === 'opening' ? 'Openings' : 'Props'}
+          {tool === 'move' ? 'Camera' : tool === 'room' ? 'Room' : tool === 'opening' ? 'Openings' : 'Props'}
         </p>
         {tool === 'move' && <MoveToolPanel />}
         {tool === 'room' && <RoomToolPanel />}
@@ -36,10 +41,9 @@ function RightPanel() {
         {tool === 'opening' && <OpeningToolPanel />}
       </div>
 
-      {/* Layers + Rooms — always visible at the bottom */}
-      <div className="shrink-0 space-y-5 border-t border-stone-800/60 p-5">
+      {/* Layers — always visible at the bottom */}
+      <div className="shrink-0 border-t border-stone-800/60 p-5">
         <LayerPanel />
-        <RoomPanel />
       </div>
     </aside>
   )

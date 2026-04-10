@@ -16,7 +16,7 @@ import type {
 import type { GridCell } from '../hooks/useSnapToGrid'
 import { getCellKey } from '../hooks/useSnapToGrid'
 
-const CURRENT_VERSION = 2
+const CURRENT_VERSION = 3
 
 // ── Serialized shapes (compact, no redundant keys) ────────────────────────────
 
@@ -50,6 +50,7 @@ export type DungeonFile = {
   cells: SerializedCell[]
   objects: SerializedObject[]
   openings: SerializedOpening[]
+  nextRoomNumber: number
 }
 
 type SerializedOpening = {
@@ -74,6 +75,7 @@ export type SerializableState = {
   placedObjects: Record<string, DungeonObjectRecord>
   wallOpenings: Record<string, OpeningRecord>
   occupancy: Record<string, string>
+  nextRoomNumber: number
 }
 
 // ── Serialize ─────────────────────────────────────────────────────────────────
@@ -111,6 +113,7 @@ export function serializeDungeon(state: SerializableState): string {
       width: o.width,
       layerId: o.layerId,
     })),
+    nextRoomNumber: state.nextRoomNumber,
   }
   return JSON.stringify(file, null, 2)
 }
@@ -134,6 +137,11 @@ export function deserializeDungeon(json: string): SerializableState | null {
   // v1 → v2: add empty openings field
   if (version < 2 && !Array.isArray((raw as Record<string, unknown>).openings)) {
     raw = { ...(raw as Record<string, unknown>), openings: [] }
+  }
+
+  // v2 → v3: add nextRoomNumber
+  if (version < 3 && typeof (raw as Record<string, unknown>).nextRoomNumber !== 'number') {
+    raw = { ...(raw as Record<string, unknown>), nextRoomNumber: 1 }
   }
 
   return parseFile(raw as Record<string, unknown>)
@@ -258,6 +266,9 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
       placedObjects,
       wallOpenings,
       occupancy,
+      nextRoomNumber: typeof raw.nextRoomNumber === 'number' && raw.nextRoomNumber >= 1
+        ? raw.nextRoomNumber
+        : 1,
     }
   } catch {
     return null

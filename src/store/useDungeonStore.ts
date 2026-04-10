@@ -71,6 +71,7 @@ type DungeonSnapshot = {
   layerOrder: string[]
   activeLayerId: string
   rooms: Record<string, Room>
+  nextRoomNumber: number
 }
 
 type PlaceObjectInput = Pick<
@@ -188,6 +189,7 @@ function cloneSnapshot(snapshot: DungeonSnapshot): DungeonSnapshot {
     rooms: Object.fromEntries(
       Object.entries(snapshot.rooms).map(([id, room]) => [id, { ...room }]),
     ),
+    nextRoomNumber: snapshot.nextRoomNumber,
   }
 }
 
@@ -210,6 +212,7 @@ function createEmptySnapshot(): DungeonSnapshot {
     layerOrder: [DEFAULT_LAYER_ID],
     activeLayerId: DEFAULT_LAYER_ID,
     rooms: {},
+    nextRoomNumber: 1,
   }
 }
 
@@ -389,13 +392,27 @@ export const useDungeonStore = create<DungeonState>()(
     const previousSnapshot = cloneSnapshot(state)
 
     set((current) => {
+      // Auto-create a room for the new cells
+      const roomId = createObjectId()
+      const roomName = `Room ${current.nextRoomNumber}`
+      const rooms = {
+        ...current.rooms,
+        [roomId]: {
+          id: roomId,
+          name: roomName,
+          layerId: current.activeLayerId,
+          floorAssetId: null,
+          wallAssetId: null,
+        },
+      }
+
       const paintedCells = { ...current.paintedCells }
 
       nextCells.forEach((cell) => {
         paintedCells[getCellKey(cell)] = {
           cell: [...cell] as GridCell,
           layerId: current.activeLayerId,
-          roomId: null,
+          roomId,
         }
       })
 
@@ -413,6 +430,8 @@ export const useDungeonStore = create<DungeonState>()(
         wallOpenings,
         occupancy,
         selection,
+        rooms,
+        nextRoomNumber: current.nextRoomNumber + 1,
         history: [...current.history, previousSnapshot],
         future: [],
       }
@@ -879,6 +898,7 @@ export const useDungeonStore = create<DungeonState>()(
       placedObjects: state.placedObjects,
       wallOpenings: state.wallOpenings,
       occupancy: state.occupancy,
+      nextRoomNumber: state.nextRoomNumber,
     })
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -917,6 +937,7 @@ export const useDungeonStore = create<DungeonState>()(
         layerOrder: state.layerOrder,
         activeLayerId: state.activeLayerId,
         rooms: state.rooms,
+        nextRoomNumber: state.nextRoomNumber,
         sceneLighting: state.sceneLighting,
         groundPlane: state.groundPlane,
         selectedAssetIds: state.selectedAssetIds,

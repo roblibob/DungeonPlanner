@@ -3,7 +3,7 @@ import {
   Box,
   DoorOpen,
   Download,
-  Grid2X2,
+  Blocks,
   Redo2,
   Undo2,
   Upload,
@@ -12,7 +12,7 @@ import {
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
 
 const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; label: string }[] = [
-  { id: 'room',    Icon: Grid2X2,  label: 'Room' },
+  { id: 'room',    Icon: Blocks,  label: 'Room' },
   { id: 'prop',    Icon: Box,      label: 'Prop' },
   { id: 'opening', Icon: DoorOpen, label: 'Opening' },
   { id: 'move',    Icon: Video,    label: 'Move' },

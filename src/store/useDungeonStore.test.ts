@@ -15,7 +15,8 @@ describe('useDungeonStore history', () => {
     let state = useDungeonStore.getState()
     expect(paintedCount).toBe(2)
     expect(Object.keys(state.paintedCells)).toHaveLength(2)
-    expect(state.paintedCells['0:0']).toEqual({ cell: [0, 0], layerId: 'default', roomId: null })
+    expect(state.paintedCells['0:0']).toMatchObject({ cell: [0, 0], layerId: 'default' })
+    expect(state.paintedCells['0:0'].roomId).toBeTruthy() // auto-assigned room
 
     state.undo()
     state = useDungeonStore.getState()
