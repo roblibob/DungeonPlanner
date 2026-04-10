@@ -147,7 +147,7 @@ function App() {
       ? 'WASD / arrows to pan · Q/E to rotate'
       : tool === 'room'
         ? 'Left-drag to build · right-drag to erase'
-        : 'Click to place · right-click to remove · Alt+click to inspect'
+        : 'Click to place · R to rotate · right-click to remove · Alt+click to inspect'
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100">

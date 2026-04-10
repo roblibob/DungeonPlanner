@@ -54,10 +54,30 @@ export function Grid({ size = 120 }: GridProps) {
   const strokeStartRef = useRef<GridCell | null>(null)
   const strokeCurrentRef = useRef<GridCell | null>(null)
   const paintedCellsRef = useRef(paintedCells)
+  // Rotation index for floor-connected prop placement (0–3, each step = 90°)
+  const [floorRotationIndex, setFloorRotationIndex] = useState(0)
 
   useEffect(() => {
     paintedCellsRef.current = paintedCells
   }, [paintedCells])
+
+  // Reset rotation when switching prop asset
+  useEffect(() => {
+    setFloorRotationIndex(0)
+  }, [selectedPropAssetId])
+
+  // R key rotates floor-connected props by 90° while in prop tool
+  useEffect(() => {
+    if (tool !== 'prop') return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        setFloorRotationIndex((prev) => (prev + 1) % 4)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [tool])
 
   // Register non-passive handlers on the canvas so preventDefault() works for
   // context menu suppression and drag-selection prevention
@@ -179,9 +199,10 @@ export function Grid({ size = 120 }: GridProps) {
     setHoveredPoint(point)
 
     if (tool === 'prop') {
-      const propPlacement = selectedPropAsset
+      const rawPlacement = selectedPropAsset
         ? getPropPlacement(selectedPropAsset, point, paintedCells)
         : null
+      const propPlacement = applyFloorRotation(rawPlacement, floorRotationIndex * (Math.PI / 2))
 
       if (event.button === 2) {
         if (propPlacement) {
@@ -286,7 +307,10 @@ export function Grid({ size = 120 }: GridProps) {
           tool={tool}
           propPlacement={
             tool === 'prop' && selectedPropAsset && hoveredPoint
-              ? getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells)
+              ? applyFloorRotation(
+                  getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells),
+                  floorRotationIndex * (Math.PI / 2),
+                )
               : null
           }
           propAssetId={selectedPropAssetId}
@@ -381,6 +405,14 @@ const WALL_CONNECTOR_DIRECTIONS: Array<{
   { name: 'east', delta: [1, 0], rotation: [0, -Math.PI / 2, 0] },
   { name: 'west', delta: [-1, 0], rotation: [0, Math.PI / 2, 0] },
 ]
+
+function applyFloorRotation(
+  placement: PropPlacement | null,
+  yRotation: number,
+): PropPlacement | null {
+  if (!placement || placement.connector !== 'FLOOR') return placement
+  return { ...placement, rotation: [0, yRotation, 0] }
+}
 
 function getPropPlacement(
   asset: ContentPackAsset,
