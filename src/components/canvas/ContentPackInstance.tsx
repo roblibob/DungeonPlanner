@@ -12,8 +12,8 @@ import { GRID_SIZE } from '../../hooks/useSnapToGrid'
 function SelectionOutline({ source }: { source: THREE.Object3D }) {
   const outline = useMemo(() => {
     const mat = new THREE.MeshStandardMaterial({
-      color: '#7dd3fc',
-      emissive: '#7dd3fc',
+      color: '#ff4444',
+      emissive: '#ff2222',
       emissiveIntensity: 1.5,
       side: THREE.BackSide,
       depthWrite: false,
@@ -27,7 +27,7 @@ function SelectionOutline({ source }: { source: THREE.Object3D }) {
         obj.renderOrder = 999
       }
     })
-    clone.scale.multiplyScalar(1.04)
+    clone.scale.multiplyScalar(1.015)
     return clone
   }, [source])
 

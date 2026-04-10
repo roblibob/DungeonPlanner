@@ -13,6 +13,7 @@ export function DungeonObject({ object }: DungeonObjectProps) {
   const selection = useDungeonStore((state) => state.selection)
   const selectObject = useDungeonStore((state) => state.selectObject)
   const removeObject = useDungeonStore((state) => state.removeObject)
+  const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const selected = selection === object.id
 
   const groupRef = useRef<Group>(null)
@@ -36,10 +37,9 @@ export function DungeonObject({ object }: DungeonObjectProps) {
     removeObject(object.id)
   }
 
-  // When postprocessing is enabled the outline is handled by the TSL
-  // toonOutlinePass (layer-based). Fall back to the inverted-hull technique
-  // when postprocessing is off so there's always a selection indicator.
-  const showHullOutline = selected
+  // When Lens (postprocessing) is on, the depth-based outline pass handles
+  // selection highlight — hide the inverted-hull to avoid double outlines.
+  const showHullOutline = selected && !ppEnabled
 
   return (
     <group ref={groupRef} position={object.position} rotation={object.rotation}>

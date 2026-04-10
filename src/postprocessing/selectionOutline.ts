@@ -1,70 +1,60 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Per-object selection outline using Three.js `toonOutlinePass` (three/tsl).
+ * Per-object selection outline using depth-buffer edge detection (TSL).
  *
- * Selected objects must be on SELECTION_OUTLINE_LAYER. A clone of the main
- * camera with only that layer visible is passed to toonOutlinePass so only
- * the selected prop is outlined.
- *
- * Returns a TSL node that contains just the outline pixels (transparent
- * background). Composite over the main scene with alpha blending.
+ * A cloned camera with only SELECTION_OUTLINE_LAYER visible renders the
+ * selected prop to a depth texture. Pixels that have geometry (depth < far)
+ * AND have at least one cardinal neighbour that is background (depth ≈ 1.0)
+ * are silhouette edges → drawn in the outline colour with alpha = 1.
+ * All other pixels are transparent (alpha = 0), so alphaOver compositing
+ * works correctly without overpainting the base scene.
  */
-import { toonOutlinePass, color, uniform, Fn, vec4, mix } from 'three/tsl'
+import { pass, screenUV, screenSize, float, vec2, vec4, step, max, mix, Fn } from 'three/tsl'
 import type * as THREE from 'three'
 
-/** Three.js layer index reserved for the selection outline. */
 export const SELECTION_OUTLINE_LAYER = 31
 
-export type SelectionOutlineOptions = {
-  /** Sky-blue default — can be any hex colour. */
-  outlineColor?: number
-  /** World-space thickness multiplier (default 0.012). */
-  thickness?: number
-}
-
+/**
+ * Returns a TSL node: outline colour at silhouette edges, transparent elsewhere.
+ * @param outlineCamera - a camera whose layers are restricted to SELECTION_OUTLINE_LAYER
+ */
 export function selectionOutline(
   scene: THREE.Scene,
-  /** The main render camera. We create a layer-filtered copy internally. */
-  camera: THREE.Camera,
-  opts: SelectionOutlineOptions = {},
-): { node: any; syncCamera: (src: THREE.Camera) => void } {
-  const { outlineColor = 0x7dd3fc, thickness = 0.012 } = opts
+  outlineCamera: THREE.Camera,
+  outlineColor: [number, number, number] = [1, 0.15, 0.15],
+): any {
+  const selectionPass = pass(scene as any, outlineCamera as any) as any
+  // Depth texture: 0 at near plane, ~1.0 at far plane (cleared to 1.0 where no geometry)
+  const depthTex = selectionPass.getTextureNode('depth') as any
 
-  // Clone the camera; we'll sync position/rotation/matrix each frame.
-  const outlineCamera = (camera as any).clone() as THREE.Camera
-  // Only render the selection layer
-  ;(outlineCamera as any).layers.disableAll()
-  ;(outlineCamera as any).layers.enable(SELECTION_OUTLINE_LAYER)
+  const FAR = float(0.9999)
 
-  const thicknessUniform = uniform(thickness)
+  return Fn(() => {
+    const uv = screenUV as any
+    const px = float(1.0).div((screenSize as any).x)
+    const py = float(1.0).div((screenSize as any).y)
 
-  const outlineNode = toonOutlinePass(
-    scene as any,
-    outlineCamera as any,
-    color(outlineColor) as any,
-    thicknessUniform as any,
-    1.0,
-  )
+    const depth = depthTex.uv(uv).r
+    const dR    = depthTex.uv(uv.add(vec2(px,        float(0)))).r
+    const dL    = depthTex.uv(uv.sub(vec2(px,        float(0)))).r
+    const dU    = depthTex.uv(uv.add(vec2(float(0),  py       ))).r
+    const dD    = depthTex.uv(uv.sub(vec2(float(0),  py       ))).r
 
-  function syncCamera(src: THREE.Camera) {
-    ;(outlineCamera as any).position.copy((src as any).position)
-    ;(outlineCamera as any).quaternion.copy((src as any).quaternion)
-    ;(outlineCamera as any).matrix.copy((src as any).matrix)
-    ;(outlineCamera as any).matrixWorld.copy((src as any).matrixWorld)
-    ;(outlineCamera as any).projectionMatrix.copy((src as any).projectionMatrix)
-    ;(outlineCamera as any).projectionMatrixInverse.copy((src as any).projectionMatrixInverse)
-  }
+    // 1.0 if this pixel has geometry (depth below far), 0.0 otherwise
+    const hasGeom = float(1.0).sub(step(FAR, depth))
+    // 1.0 if any cardinal neighbour is background (depth ≥ far)
+    const neighborIsBg = step(FAR, max(dR, max(dL, max(dU, dD))))
 
-  return { node: outlineNode, syncCamera }
+    const isEdge = hasGeom.mul(neighborIsBg)
+
+    return vec4(float(outlineColor[0]), float(outlineColor[1]), float(outlineColor[2]), isEdge)
+  })()
 }
 
 /**
  * Alpha-composite `overlay` (vec4) on top of `base` (vec4).
- * Uses the overlay's alpha channel to blend.
+ * Uses the overlay's alpha to blend — pixels with alpha=0 are transparent.
  */
-export const alphaOver = Fn(([base, overlay]: any[]) => {
-  return vec4(
-    mix(base.xyz, overlay.xyz, overlay.w),
-    base.w,
-  )
-})
+export const alphaOver = Fn(([base, overlay]: any[]) =>
+  vec4(mix(base.xyz, overlay.xyz, overlay.w), base.w),
+)
