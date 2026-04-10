@@ -5,6 +5,7 @@ import { useDungeonStore, type DungeonObjectRecord } from '../../store/useDungeo
 import { ContentPackInstance } from './ContentPackInstance'
 import { getContentPackAssetById } from '../../content-packs/registry'
 import type { PropLight } from '../../content-packs/types'
+import { Select } from '@react-three/postprocessing'
 
 type DungeonObjectProps = { object: DungeonObjectRecord }
 
@@ -33,18 +34,20 @@ export function DungeonObject({ object }: DungeonObjectProps) {
   }
 
   return (
-    <group position={object.position} rotation={object.rotation}>
-      <ContentPackInstance
-        assetId={object.assetId}
-        selected={selected}
-        variantKey={object.cellKey}
-        userData={{ objectId: object.id }}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-        variant="prop"
-      />
-      {light && <PropPointLight light={light} />}
-    </group>
+    <Select enabled={selected}>
+      <group position={object.position} rotation={object.rotation}>
+        <ContentPackInstance
+          assetId={object.assetId}
+          selected={selected}
+          variantKey={object.cellKey}
+          userData={{ objectId: object.id }}
+          onClick={handleClick}
+          onContextMenu={handleContextMenu}
+          variant="prop"
+        />
+        {light && <PropPointLight light={light} />}
+      </group>
+    </Select>
   )
 }
 

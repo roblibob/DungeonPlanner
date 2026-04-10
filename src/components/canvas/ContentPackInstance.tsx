@@ -7,31 +7,6 @@ import type { ComponentType } from 'react'
 import type { ContentPackComponentProps } from '../../content-packs/types'
 import { GRID_SIZE } from '../../hooks/useSnapToGrid'
 
-const OUTLINE_COLOR = new THREE.Color('#7dd3fc')
-const OUTLINE_SCALE = 1.055
-
-/** Inverted-hull outline: a back-face clone scaled up slightly, rendered
- *  in a single colour. Works reliably with primitive/GLTF objects. */
-function SelectionOutline({ source }: { source: THREE.Object3D }) {
-  const outline = useMemo(() => {
-    const clone = source.clone(true)
-    clone.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.material = new THREE.MeshBasicMaterial({
-          color: OUTLINE_COLOR,
-          side: THREE.BackSide,
-          depthWrite: false,
-        })
-        obj.renderOrder = 999
-      }
-    })
-    clone.scale.multiplyScalar(OUTLINE_SCALE)
-    return clone
-  }, [source])
-
-  return <primitive object={outline} />
-}
-
 type ContentPackInstanceVariant = 'floor' | 'wall' | 'prop'
 
 type ContentPackInstanceProps = ThreeElements['group'] & {
@@ -80,14 +55,12 @@ export function ContentPackInstance({
           Component={AssetComponent}
           componentProps={getComponentProps(variantKey)}
           receiveShadow={receiveShadow}
-          selected={selected}
           {...groupProps}
         />
       ) : (
         <GLTFModel
           assetPath={assetPath}
           receiveShadow={receiveShadow}
-          selected={selected}
           {...groupProps}
         />
       )}
@@ -102,12 +75,10 @@ function getComponentProps(variantKey?: string): ContentPackComponentProps {
 function GLTFModel({
   assetPath,
   receiveShadow,
-  selected,
   ...groupProps
 }: ThreeElements['group'] & {
   assetPath: string
   receiveShadow: boolean
-  selected?: boolean
 }) {
   const gltf = useGLTF(assetPath)
   const scene = useMemo(() => {
@@ -124,7 +95,6 @@ function GLTFModel({
   return (
     <group {...groupProps}>
       <primitive object={scene} />
-      {selected && <SelectionOutline source={scene} />}
     </group>
   )
 }
@@ -133,13 +103,11 @@ function ComponentAsset({
   Component,
   componentProps,
   receiveShadow,
-  selected,
   ...groupProps
 }: ThreeElements['group'] & {
   Component: ComponentType<ContentPackComponentProps>
   componentProps: ContentPackComponentProps
   receiveShadow: boolean
-  selected?: boolean
 }) {
   const groupRef = useRef<THREE.Group>(null)
 
@@ -155,7 +123,6 @@ function ComponentAsset({
   return (
     <group ref={groupRef} {...groupProps}>
       <Component {...componentProps} />
-      {selected && groupRef.current && <SelectionOutline source={groupRef.current} />}
     </group>
   )
 }
