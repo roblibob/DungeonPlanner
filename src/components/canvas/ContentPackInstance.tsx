@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useMemo } from 'react'
-import { useGLTF } from '@react-three/drei'
+import { useGLTF, Outlines } from '@react-three/drei'
 import type { ThreeElements } from '@react-three/fiber'
 import * as THREE from 'three'
 import { getContentPackAssetById } from '../../content-packs/registry'
@@ -55,12 +55,14 @@ export function ContentPackInstance({
           Component={AssetComponent}
           componentProps={getComponentProps(variantKey)}
           receiveShadow={receiveShadow}
+          selected={selected}
           {...groupProps}
         />
       ) : (
         <GLTFModel
           assetPath={assetPath}
           receiveShadow={receiveShadow}
+          selected={selected}
           {...groupProps}
         />
       )}
@@ -75,10 +77,12 @@ function getComponentProps(variantKey?: string): ContentPackComponentProps {
 function GLTFModel({
   assetPath,
   receiveShadow,
+  selected,
   ...groupProps
 }: ThreeElements['group'] & {
   assetPath: string
   receiveShadow: boolean
+  selected?: boolean
 }) {
   const gltf = useGLTF(assetPath)
   const scene = useMemo(() => {
@@ -95,6 +99,7 @@ function GLTFModel({
   return (
     <group {...groupProps}>
       <primitive object={scene} />
+      {selected && <Outlines thickness={0.035} color="#7dd3fc" screenspace={false} />}
     </group>
   )
 }
@@ -103,11 +108,13 @@ function ComponentAsset({
   Component,
   componentProps,
   receiveShadow,
+  selected,
   ...groupProps
 }: ThreeElements['group'] & {
   Component: ComponentType<ContentPackComponentProps>
   componentProps: ContentPackComponentProps
   receiveShadow: boolean
+  selected?: boolean
 }) {
   const groupRef = useRef<THREE.Group>(null)
 
@@ -123,6 +130,7 @@ function ComponentAsset({
   return (
     <group ref={groupRef} {...groupProps}>
       <Component {...componentProps} />
+      {selected && <Outlines thickness={0.035} color="#7dd3fc" screenspace={false} />}
     </group>
   )
 }

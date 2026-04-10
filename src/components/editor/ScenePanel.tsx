@@ -8,6 +8,9 @@ export function ScenePanel() {
   const paintedCells = useDungeonStore((state) => state.paintedCells)
   const placedObjects = useDungeonStore((state) => state.placedObjects)
   const wallOpenings = useDungeonStore((state) => state.wallOpenings)
+  const selection = useDungeonStore((state) => state.selection)
+  const selectObject = useDungeonStore((state) => state.selectObject)
+  const setTool = useDungeonStore((state) => state.setTool)
   const removeRoom = useDungeonStore((state) => state.removeRoom)
   const renameRoom = useDungeonStore((state) => state.renameRoom)
 
@@ -57,6 +60,8 @@ export function ScenePanel() {
               room={room}
               props={propsByRoom[room.id] ?? []}
               openings={openingsByRoom[room.id] ?? []}
+              selection={selection}
+              onSelectProp={(id) => { selectObject(id); setTool('prop') }}
               onRename={(name) => renameRoom(room.id, name)}
               onDelete={() => removeRoom(room.id)}
             />
@@ -102,11 +107,13 @@ type RoomNodeProps = {
   room: { id: string; name: string }
   props: { id: string; assetId: string | null; cellKey: string }[]
   openings: { id: string; assetId: string | null; wallKey: string; width: 1 | 2 | 3 }[]
+  selection: string | null
+  onSelectProp: (id: string) => void
   onRename: (name: string) => void
   onDelete: () => void
 }
 
-function RoomNode({ room, props, openings, onRename, onDelete }: RoomNodeProps) {
+function RoomNode({ room, props, openings, selection, onSelectProp, onRename, onDelete }: RoomNodeProps) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(room.name)
@@ -188,6 +195,8 @@ function RoomNode({ room, props, openings, onRename, onDelete }: RoomNodeProps) 
                     key={obj.id}
                     label={asset?.name ?? 'Unknown prop'}
                     detail={obj.cellKey}
+                    active={selection === obj.id}
+                    onClick={() => onSelectProp(obj.id)}
                   />
                 )
               })}
@@ -213,12 +222,32 @@ function RoomNode({ room, props, openings, onRename, onDelete }: RoomNodeProps) 
 
 // ── Leaf row ──────────────────────────────────────────────────────────────────
 
-function LeafRow({ label, detail, dim = false }: { label: string; detail: string; dim?: boolean }) {
+function LeafRow({
+  label,
+  detail,
+  dim = false,
+  active = false,
+  onClick,
+}: {
+  label: string
+  detail: string
+  dim?: boolean
+  active?: boolean
+  onClick?: () => void
+}) {
   return (
-    <div className="flex items-center gap-2 rounded px-1.5 py-0.5 text-[11px] text-stone-500">
-      <span className={`h-1 w-1 shrink-0 rounded-full ${dim ? 'bg-stone-800' : 'bg-stone-700'}`} />
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left text-[11px] transition ${
+        active
+          ? 'bg-sky-500/15 text-sky-300'
+          : 'text-stone-500 hover:bg-stone-800/50 hover:text-stone-400'
+      } ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
+    >
+      <span className={`h-1 w-1 shrink-0 rounded-full ${active ? 'bg-sky-400' : dim ? 'bg-stone-800' : 'bg-stone-700'}`} />
       <span className="truncate">{label}</span>
       <span className="ml-auto shrink-0 font-mono text-[10px] text-stone-700">{detail}</span>
-    </div>
+    </button>
   )
 }
