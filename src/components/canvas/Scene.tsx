@@ -24,6 +24,8 @@ async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
     })
 
     await renderer.init()
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(window.innerWidth, window.innerHeight, false)
     return renderer
@@ -40,6 +42,8 @@ async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
     } as ConstructorParameters<typeof WebGPURenderer>[0])
 
     await renderer.init()
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(window.innerWidth, window.innerHeight, false)
     return renderer
@@ -49,7 +53,7 @@ async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
 export function Scene() {
   return (
     <Canvas
-      shadows={false}
+      shadows
       dpr={[1, 2]}
       camera={{ position: [9, 11, 9], fov: 42, near: 0.1, far: 140 }}
       gl={createPreferredRenderer}
@@ -79,9 +83,18 @@ function SceneContent() {
       <fog attach="fog" args={['#120f0e', 26, 74]} />
       <ambientLight intensity={1.6 * lightIntensity} color="#ffe4c7" />
       <directionalLight
+        castShadow
         intensity={2 * lightIntensity}
         color="#ffd29d"
         position={[9, 14, 7]}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-near={0.5}
+        shadow-camera-far={80}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
+        shadow-bias={-0.001}
       />
       <directionalLight
         intensity={0.85 * lightIntensity}
@@ -90,7 +103,7 @@ function SceneContent() {
       />
 
       {/* Ground plane — rendered at y=-0.01 so the grid helper at y=0.001 stays on top */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} renderOrder={-1}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} renderOrder={-1} receiveShadow>
         <planeGeometry args={[500, 500]} />
         <meshStandardMaterial color={groundColor} roughness={1} metalness={0} />
       </mesh>

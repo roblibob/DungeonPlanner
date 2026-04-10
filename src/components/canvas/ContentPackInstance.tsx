@@ -1,7 +1,9 @@
-import { Suspense, useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useRef, useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import type { ThreeElements } from '@react-three/fiber'
+import * as THREE from 'three'
 import { getContentPackAssetById } from '../../content-packs/registry'
+import type { ComponentType } from 'react'
 import type { ContentPackComponentProps } from '../../content-packs/types'
 import { GRID_SIZE } from '../../hooks/useSnapToGrid'
 
@@ -24,6 +26,7 @@ export function ContentPackInstance({
   const asset = assetId ? getContentPackAssetById(assetId) : null
   const assetPath = asset?.assetUrl
   const AssetComponent = asset?.Component ?? null
+  const castShadow = asset?.metadata?.castShadow !== false
 
   useEffect(() => {
     if (assetPath) {
@@ -34,7 +37,7 @@ export function ContentPackInstance({
   if (!assetPath) {
     return (
       <group scale={selected ? 1.06 : 1} {...groupProps}>
-        <FallbackMesh selected={selected} variant={variant} />
+        <FallbackMesh selected={selected} variant={variant} castShadow={castShadow} />
       </group>
     )
   }
@@ -43,17 +46,22 @@ export function ContentPackInstance({
     <Suspense
       fallback={
         <group scale={selected ? 1.06 : 1} {...groupProps}>
-          <FallbackMesh selected={selected} variant={variant} />
+          <FallbackMesh selected={selected} variant={variant} castShadow={castShadow} />
         </group>
       }
     >
       {AssetComponent ? (
-        <group scale={selected ? 1.06 : 1} {...groupProps}>
-          <AssetComponent {...getComponentProps(variantKey)} />
-        </group>
+        <ComponentAsset
+          Component={AssetComponent}
+          componentProps={getComponentProps(variantKey)}
+          castShadow={castShadow}
+          scale={selected ? 1.06 : 1}
+          {...groupProps}
+        />
       ) : (
         <GLTFModel
           assetPath={assetPath}
+          castShadow={castShadow}
           scale={selected ? 1.06 : 1}
           {...groupProps}
         />
@@ -68,12 +76,23 @@ function getComponentProps(variantKey?: string): ContentPackComponentProps {
 
 function GLTFModel({
   assetPath,
+  castShadow,
   ...groupProps
 }: ThreeElements['group'] & {
   assetPath: string
+  castShadow: boolean
 }) {
   const gltf = useGLTF(assetPath)
-  const scene = useMemo(() => gltf.scene.clone(), [gltf.scene])
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone()
+    clone.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = castShadow
+        obj.receiveShadow = true
+      }
+    })
+    return clone
+  }, [gltf.scene, castShadow])
 
   return (
     <group {...groupProps}>
@@ -82,12 +101,42 @@ function GLTFModel({
   )
 }
 
+function ComponentAsset({
+  Component,
+  componentProps,
+  castShadow,
+  ...groupProps
+}: ThreeElements['group'] & {
+  Component: ComponentType<ContentPackComponentProps>
+  componentProps: ContentPackComponentProps
+  castShadow: boolean
+}) {
+  const groupRef = useRef<THREE.Group>(null)
+
+  useEffect(() => {
+    groupRef.current?.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = castShadow
+        obj.receiveShadow = true
+      }
+    })
+  }, [castShadow])
+
+  return (
+    <group ref={groupRef} {...groupProps}>
+      <Component {...componentProps} />
+    </group>
+  )
+}
+
 function FallbackMesh({
   selected,
   variant,
+  castShadow,
 }: {
   selected: boolean
   variant: ContentPackInstanceVariant
+  castShadow: boolean
 }) {
   const color =
     variant === 'floor' ? '#34d399' : variant === 'wall' ? '#fbbf24' : '#7dd3fc'
@@ -102,7 +151,7 @@ function FallbackMesh({
   const yOffset = variant === 'floor' ? 0.03 : variant === 'wall' ? 1.5 : 0
 
   return (
-    <mesh position={[0, yOffset, 0]} scale={selected ? 1.04 : 1}>
+    <mesh position={[0, yOffset, 0]} scale={selected ? 1.04 : 1} castShadow={castShadow} receiveShadow>
       <boxGeometry args={geometry} />
       <meshStandardMaterial
         color={color}

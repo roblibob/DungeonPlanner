@@ -20,6 +20,8 @@ export type PropLight = {
 export type ContentPackAssetMetadata = {
   connectsTo?: PropConnector
   light?: PropLight
+  /** Whether this asset casts shadows. Defaults to true when omitted. */
+  castShadow?: boolean
 }
 
 export type ContentPackAsset = {
