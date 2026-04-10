@@ -19,6 +19,7 @@ import {
 import { useDungeonStore, type DungeonTool, type PaintedCellRecord } from '../../store/useDungeonStore'
 import { triggerBuild } from '../../store/buildAnimations'
 import { FloorGridOverlay } from './FloorGridOverlay'
+import { ContentPackInstance } from './ContentPackInstance'
 
 type GridProps = {
   size?: number
@@ -288,7 +289,7 @@ export function Grid({ size = 120 }: GridProps) {
               ? getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells)
               : null
           }
-          hasPropAsset={Boolean(selectedPropAsset)}
+          propAssetId={selectedPropAssetId}
         />
       )}
     </group>
@@ -302,7 +303,7 @@ function HoverPreview({
   strokeMode,
   tool,
   propPlacement,
-  hasPropAsset,
+  propAssetId,
 }: {
   hoveredCell: SnappedGridPosition | null
   hoveredPoint: { x: number; y: number; z: number } | null
@@ -310,22 +311,21 @@ function HoverPreview({
   strokeMode: 'paint' | 'erase' | null
   tool: DungeonTool
   propPlacement: PropPlacement | null
-  hasPropAsset: boolean
+  propAssetId: string | null
 }) {
   if (tool === 'prop') {
-    if (!hoveredCell || !hoveredPoint) {
-      return null
-    }
+    if (!hoveredCell || !hoveredPoint) return null
 
-    const opacity = hasPropAsset ? 0.2 : 0.35
+    const position = propPlacement?.position ?? [hoveredCell.position[0], 0, hoveredCell.position[2]]
+    const rotation = propPlacement?.rotation ?? [0, 0, 0]
+
     return (
-      <mesh
-        position={propPlacement?.position ?? [hoveredCell.position[0], 0.45, hoveredCell.position[2]]}
-        rotation={propPlacement?.rotation ?? [0, 0, 0]}
-      >
-        <boxGeometry args={[0.5, 0.9, 0.5]} />
-        <meshStandardMaterial color="#7dd3fc" transparent opacity={opacity} />
-      </mesh>
+      <group position={position} rotation={rotation}>
+        <ContentPackInstance
+          assetId={propAssetId}
+          variant="prop"
+        />
+      </group>
     )
   }
 
