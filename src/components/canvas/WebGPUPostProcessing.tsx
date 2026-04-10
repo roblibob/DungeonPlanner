@@ -65,6 +65,11 @@ export function WebGPUPostProcessing() {
     postProcessing.outputNode = alphaOver(tiltShiftNode, outlineNode)
     postProcessingRef.current = postProcessing
 
+    // Pre-warm all material pipelines currently in the scene so Three.js
+    // doesn't try to compile them for the first time mid-postprocessing-render
+    // (which triggers the WebGPU "PipelineLayout with '' label" error on Firefox).
+    ;(renderer as any).compileAsync?.(scene, camera).catch(() => {/* best-effort */})
+
     return () => {
       postProcessingRef.current = null
       outlineCameraRef.current  = null

@@ -412,7 +412,7 @@ function HoverPreview({
       return (
         <mesh position={position} rotation={rotation}>
           <boxGeometry args={[GRID_SIZE * 0.2, GRID_SIZE * 0.8, GRID_SIZE * 0.1]} />
-          <meshStandardMaterial color="#f87171" transparent opacity={0.5} />
+          <meshBasicMaterial color="#f87171" transparent opacity={0.5} />
         </mesh>
       )
     }
@@ -440,7 +440,7 @@ function HoverPreview({
         return (
           <mesh key={key} position={[position[0], -0.03, position[2]]}>
             <boxGeometry args={[GRID_SIZE * 0.98, 0.06, GRID_SIZE * 0.98]} />
-            <meshStandardMaterial color={color} transparent opacity={opacity} />
+            <meshBasicMaterial color={color} transparent opacity={opacity} />
           </mesh>
         )
       })}
