@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useEffectEvent } from 'react'
+import { overlayDomRef } from './components/canvas/floorTransition'
 import { getDefaultAssetIdByCategory } from './content-packs/registry'
 import { EditorToolbar } from './components/editor/EditorToolbar'
 import { MoveToolPanel } from './components/editor/MoveToolPanel'
@@ -202,6 +203,13 @@ function App() {
             >
               <Scene />
             </Suspense>
+
+            {/* Floor-switch transition overlay — opacity driven imperatively by FloorTransitionController */}
+            <div
+              ref={overlayDomRef}
+              className="pointer-events-none absolute inset-0 bg-stone-950"
+              style={{ opacity: 0 }}
+            />
 
             {/* Tool hint overlay */}
             <div className="pointer-events-none absolute left-4 top-4 rounded-2xl border border-amber-300/15 bg-stone-950/78 px-4 py-3 backdrop-blur">

@@ -1,10 +1,11 @@
-import { Canvas, useThree } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Suspense, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { FpsMeterNode } from './FpsCounter'
 import { Grid } from './Grid'
 import { Controls } from './Controls'
+import { FloorTransitionController } from './FloorTransitionController'
 import { CameraPresetManager } from './CameraPresetManager'
 import { DungeonObject } from './DungeonObject'
 import { DungeonRoom } from './DungeonRoom'
@@ -70,6 +71,26 @@ async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
 
 export function Scene() {
   const activeFloorId = useDungeonStore((state) => state.activeFloorId)
+  const floors        = useDungeonStore((state) => state.floors)
+
+  // Track previous floor so we can compute direction before FloorContent remounts.
+  // Mutating a ref during render is intentional here — it runs in the same cycle
+  // as the key change, so the new FloorContent receives the correct startY.
+  const prevFloorIdRef    = useRef(activeFloorId)
+  const floorAnimStartY   = useRef(0)
+
+  if (prevFloorIdRef.current !== activeFloorId) {
+    const prevLevel = floors[prevFloorIdRef.current]?.level ?? 0
+    const nextLevel = floors[activeFloorId]?.level ?? 0
+    // Going UP to a higher level: new floor slides down from above (+Y), camera bumped up
+    // Going DOWN to a lower level: new floor slides up from below (-Y), camera bumped down
+    floorAnimStartY.current =
+      nextLevel > prevLevel ?  2 :
+      nextLevel < prevLevel ? -2 :
+      0
+    prevFloorIdRef.current = activeFloorId
+  }
+
   return (
     <Canvas
       shadows
@@ -82,7 +103,7 @@ export function Scene() {
         {/* Global scene elements — never remount on floor switch */}
         <GlobalContent />
         {/* Floor-specific content — remounts when active floor changes */}
-        <FloorContent key={activeFloorId} />
+        <FloorContent key={activeFloorId} startY={floorAnimStartY.current} />
       </Suspense>
     </Canvas>
   )
@@ -122,6 +143,7 @@ function GlobalContent() {
 
       <Grid />
       <Controls />
+      <FloorTransitionController />
       <CameraPresetManager />
       <FpsMeterNode />
       <FrameDriver />
@@ -131,7 +153,7 @@ function GlobalContent() {
 }
 
 /** Dungeon room tiles and props — remounts on floor switch for clean state. */
-function FloorContent() {
+function FloorContent({ startY = 0 }: { startY?: number }) {
   const placedObjects = useDungeonStore((state) => state.placedObjects)
   const layers = useDungeonStore((state) => state.layers)
 
@@ -140,13 +162,27 @@ function FloorContent() {
     [placedObjects, layers],
   )
 
+  const groupRef = useRef<THREE.Group>(null)
+  const animYRef = useRef(startY)
+  const { invalidate } = useThree()
+
+  useFrame((_, delta) => {
+    if (Math.abs(animYRef.current) < 0.002) {
+      if (groupRef.current) groupRef.current.position.y = 0
+      return
+    }
+    animYRef.current *= Math.exp(-10 * delta)
+    if (groupRef.current) groupRef.current.position.y = animYRef.current
+    invalidate()
+  })
+
   return (
-    <>
+    <group ref={groupRef} position={[0, startY, 0]}>
       <DungeonRoom />
       {objects.map((object) => (
         <DungeonObject key={object.id} object={object} />
       ))}
-    </>
+    </group>
   )
 }
 

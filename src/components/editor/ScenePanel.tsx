@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react'
 import { ChevronRight, Trash2 } from 'lucide-react'
 import { useDungeonStore, type FloorRecord } from '../../store/useDungeonStore'
 import { getContentPackAssetById } from '../../content-packs/registry'
+import { requestFloorTransition } from '../canvas/floorTransition'
 import type { PaintedCells } from '../../store/useDungeonStore'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,7 +25,6 @@ export function ScenePanel() {
   const setTool      = useDungeonStore((s) => s.setTool)
   const removeRoom   = useDungeonStore((s) => s.removeRoom)
   const renameRoom   = useDungeonStore((s) => s.renameRoom)
-  const switchFloor  = useDungeonStore((s) => s.switchFloor)
   const deleteFloor  = useDungeonStore((s) => s.deleteFloor)
   const renameFloor  = useDungeonStore((s) => s.renameFloor)
 
@@ -78,16 +78,16 @@ export function ScenePanel() {
               isActive={isActive}
               data={data}
               selection={selection}
-              onActivate={() => !isActive && switchFloor(floorId)}
+              onActivate={() => !isActive && requestFloorTransition(floorId)}
               onRename={(name) => renameFloor(floorId, name)}
               onDelete={floorOrder.length > 1 ? () => deleteFloor(floorId) : undefined}
               onSelectProp={(id) => {
-                if (!isActive) switchFloor(floorId)
+                if (!isActive) requestFloorTransition(floorId)
                 selectObject(id)
                 setTool('prop')
               }}
               onSelectOpening={(id) => {
-                if (!isActive) switchFloor(floorId)
+                if (!isActive) requestFloorTransition(floorId)
                 selectObject(id)
                 setTool('opening')
               }}
