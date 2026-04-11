@@ -912,7 +912,7 @@ export const useDungeonStore = create<DungeonState>()(
     const state = get()
     const id = createObjectId()
     const floorNumber = state.floorOrder.length + 1
-    const floorName = name ?? `Floor ${floorNumber}`
+    const floorName = typeof name === 'string' && name.trim() ? name.trim() : `Floor ${floorNumber}`
 
     // Save current working state back to the active floor record
     const updatedCurrentFloor: FloorRecord = {

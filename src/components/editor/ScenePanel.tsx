@@ -161,7 +161,7 @@ function FloorTabStrip({ floors, floorOrder, activeFloorId, onSwitch, onAdd, onD
       })}
       <button
         type="button"
-        onClick={onAdd}
+        onClick={() => onAdd()}
         className="flex shrink-0 items-center justify-center rounded-lg border border-stone-700/60 bg-stone-900/50 p-1 text-stone-400 hover:border-stone-500 hover:text-stone-200 transition-colors"
         title="Add floor"
       >
