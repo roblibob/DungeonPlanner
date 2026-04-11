@@ -78,7 +78,10 @@ export function Scene() {
       gl={createPreferredRenderer}
     >
       <Suspense fallback={null}>
-        <SceneContent key={activeFloorId} />
+        {/* Global scene elements — never remount on floor switch */}
+        <GlobalContent />
+        {/* Floor-specific content — remounts when active floor changes */}
+        <FloorContent key={activeFloorId} />
       </Suspense>
     </Canvas>
   )
@@ -86,22 +89,16 @@ export function Scene() {
 
 export default Scene
 
-function SceneContent() {
-  const placedObjects = useDungeonStore((state) => state.placedObjects)
-  const layers = useDungeonStore((state) => state.layers)
+/** Camera, controls, lighting, grid, ground plane — shared across all floors. */
+function GlobalContent() {
   const lightIntensity = useDungeonStore((state) => state.sceneLighting.intensity)
   const groundPlane = useDungeonStore((state) => state.groundPlane)
-  const postProcessingEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const showGroundPlane = useDungeonStore((state) => state.showGroundPlane)
-
-  const objects = useMemo(
-    () => Object.values(placedObjects).filter((obj) => layers[obj.layerId]?.visible !== false),
-    [placedObjects, layers],
-  )
+  const postProcessingEnabled = useDungeonStore((state) => state.postProcessing.enabled)
+  const placedObjects = useDungeonStore((state) => state.placedObjects)
 
   const groundColor =
-    groundPlane === 'black' ? '#0e0e0e' :
-    /* green */ '#2a4a1a'
+    groundPlane === 'black' ? '#0e0e0e' : '#2a4a1a'
 
   const staircasesDown = useMemo(
     () =>
@@ -136,19 +133,32 @@ function SceneContent() {
         position={[-8, 7, -4]}
       />
 
-      {/* Ground plane — with holes cut out under each StaircaseDown prop */}
       {showGroundPlane && <StaircaseHoles staircases={staircasesDown} groundColor={groundColor} />}
 
       <Grid />
+      <Controls />
+      <CameraPresetManager />
+      {postProcessingEnabled && <WebGPUPostProcessing />}
+    </>
+  )
+}
+
+/** Dungeon room tiles and props — remounts on floor switch for clean state. */
+function FloorContent() {
+  const placedObjects = useDungeonStore((state) => state.placedObjects)
+  const layers = useDungeonStore((state) => state.layers)
+
+  const objects = useMemo(
+    () => Object.values(placedObjects).filter((obj) => layers[obj.layerId]?.visible !== false),
+    [placedObjects, layers],
+  )
+
+  return (
+    <>
       <DungeonRoom />
       {objects.map((object) => (
         <DungeonObject key={object.id} object={object} />
       ))}
-
-      {postProcessingEnabled && <WebGPUPostProcessing />}
-
-      <Controls />
-      <CameraPresetManager />
     </>
   )
 }
