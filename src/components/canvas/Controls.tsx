@@ -2,7 +2,9 @@ import { OrbitControls } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useDungeonStore } from '../../store/useDungeonStore'
+import { registerDebugCameraPoseReader, registerDebugWorldProjector } from './debugCameraBridge'
 
 const PAN_SPEED = 0.006
 const ROTATE_SPEED = 0.025
@@ -23,6 +25,7 @@ function KeyboardCameraControls() {
   const isPaintingStrokeActive = useDungeonStore(
     (state) => state.isPaintingStrokeActive,
   )
+  const isObjectDragActive = useDungeonStore((state) => state.isObjectDragActive)
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
 
   useEffect(() => {
@@ -51,7 +54,7 @@ function KeyboardCameraControls() {
   }, [])
 
   useFrame((state) => {
-    if (isPaintingStrokeActive) return
+    if (isPaintingStrokeActive || isObjectDragActive) return
     const keys = pressedKeys.current
     if (keys.size === 0) return
 
@@ -107,20 +110,53 @@ function KeyboardCameraControls() {
 }
 
 export function Controls() {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const camera = useThree((state) => state.camera)
+  const gl = useThree((state) => state.gl)
   const cameraMode = useDungeonStore((state) => state.cameraMode)
   const isPaintingStrokeActive = useDungeonStore(
     (state) => state.isPaintingStrokeActive,
   )
+  const isObjectDragActive = useDungeonStore((state) => state.isObjectDragActive)
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
 
   const isPerspective = activeCameraMode === 'perspective'
   const isTopDown     = activeCameraMode === 'top-down'
 
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return
+    }
+
+    registerDebugCameraPoseReader(() => {
+      const target = controlsRef.current?.target ?? new THREE.Vector3()
+
+      return {
+        position: [camera.position.x, camera.position.y, camera.position.z] as const,
+        target: [target.x, target.y, target.z] as const,
+      }
+    })
+    registerDebugWorldProjector((point) => {
+      const vector = new THREE.Vector3(point[0], point[1], point[2]).project(camera)
+      const rect = gl.domElement.getBoundingClientRect()
+      return {
+        x: rect.left + ((vector.x + 1) * 0.5 * rect.width),
+        y: rect.top + ((1 - vector.y) * 0.5 * rect.height),
+      }
+    })
+
+    return () => {
+      registerDebugCameraPoseReader(null)
+      registerDebugWorldProjector(null)
+    }
+  }, [camera, gl])
+
   return (
     <>
       <OrbitControls
+        ref={controlsRef}
         makeDefault
-        enabled={cameraMode === 'orbit' && !isPaintingStrokeActive}
+        enabled={cameraMode === 'orbit' && !isPaintingStrokeActive && !isObjectDragActive}
         enableRotate={isPerspective}
         enablePan
         enableDamping

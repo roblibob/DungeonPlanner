@@ -58,5 +58,6 @@ export const propsRubbleAsset: ContentPackAsset = {
   Component: PropsRubble,
   metadata: {
     connectsTo: 'FLOOR',
+    blocksLineOfSight: false,
   },
 }

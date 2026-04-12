@@ -57,4 +57,206 @@ test.describe('Dungeon editor smoke flow', () => {
     await page.getByRole('button', { name: 'Redo' }).click()
     await expect(counter).toContainText('4 room cells')
   })
+
+  test('select tool clicks do not lock the camera', async ({ page }) => {
+    await page.goto('/')
+    await waitForDebugBridge(page)
+    await page.waitForFunction(() => window.__DUNGEON_DEBUG__?.getCameraPose() !== null)
+
+    const before = await page.evaluate(() => window.__DUNGEON_DEBUG__?.getCameraPose())
+    expect(before).not.toBeNull()
+
+    const canvas = page.locator('canvas').first()
+    const box = await canvas.boundingBox()
+    expect(box).not.toBeNull()
+
+    const startX = box!.x + box!.width / 2 + 24
+    const startY = box!.y + box!.height / 2 + 24
+
+    await page.getByRole('button', { name: 'Select' }).click()
+    await page.mouse.move(startX, startY)
+    await page.mouse.click(startX, startY)
+
+    const strokeActive = await page.evaluate(() =>
+      Boolean((window.__DUNGEON_DEBUG__?.getSnapshot() as { isPaintingStrokeActive?: boolean } | undefined)?.isPaintingStrokeActive),
+    )
+    expect(strokeActive).toBe(false)
+
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + 120, startY - 60, { steps: 12 })
+    await page.mouse.up()
+
+    const after = await page.evaluate(() => window.__DUNGEON_DEBUG__?.getCameraPose())
+    expect(after).not.toBeNull()
+    expect(after).not.toEqual(before)
+  })
+
+  test('select tool can select characters', async ({ page }) => {
+    await page.goto('/')
+    await waitForDebugBridge(page)
+
+    await page.evaluate(() => {
+      const debug = window.__DUNGEON_DEBUG__
+      const state = debug?.getSnapshot() as {
+        paintCells: (cells: Array<[number, number]>) => number
+        placeObject: (input: {
+          type: 'player'
+          assetId: string
+          position: [number, number, number]
+          rotation: [number, number, number]
+          props: Record<string, unknown>
+          cell: [number, number]
+          cellKey: string
+        }) => string | null
+      }
+
+      state.paintCells([[0, 0]])
+      state.placeObject({
+        type: 'player',
+        assetId: 'core.player_barbarian',
+        position: [1, 0, 1],
+        rotation: [0, 0, 0],
+        props: {},
+        cell: [0, 0],
+        cellKey: '0:0:floor',
+      })
+    })
+
+    await page.getByRole('button', { name: 'Select' }).click()
+
+    const canvas = page.locator('canvas').first()
+    const box = await canvas.boundingBox()
+    expect(box).not.toBeNull()
+
+    const clickX = box!.x + box!.width / 2 + 24
+    const clickY = box!.y + box!.height / 2 + 24
+    await page.mouse.click(clickX, clickY)
+
+    await expect(page.getByText('Selected Character', { exact: true })).toBeVisible()
+    await expect(page.getByText('Barbarian', { exact: true })).toBeVisible()
+  })
+
+  test('selected characters rotate with the R key', async ({ page }) => {
+    await page.goto('/')
+    await waitForDebugBridge(page)
+
+    await page.evaluate(() => {
+      const state = window.__DUNGEON_DEBUG__?.getSnapshot() as {
+        paintCells: (cells: Array<[number, number]>) => number
+        placeObject: (input: {
+          type: 'player'
+          assetId: string
+          position: [number, number, number]
+          rotation: [number, number, number]
+          props: Record<string, unknown>
+          cell: [number, number]
+          cellKey: string
+        }) => string | null
+      }
+
+      state.paintCells([[0, 0]])
+      state.placeObject({
+        type: 'player',
+        assetId: 'core.player_barbarian',
+        position: [1, 0, 1],
+        rotation: [0, 0, 0],
+        props: { connector: 'FLOOR', direction: null },
+        cell: [0, 0],
+        cellKey: '0:0:floor',
+      })
+    })
+
+    await page.getByRole('button', { name: 'Select' }).click()
+
+    const canvas = page.locator('canvas').first()
+    const box = await canvas.boundingBox()
+    expect(box).not.toBeNull()
+
+    const clickX = box!.x + box!.width / 2 + 24
+    const clickY = box!.y + box!.height / 2 + 24
+    await page.mouse.click(clickX, clickY)
+    await page.keyboard.press('r')
+
+    await page.waitForFunction(() => {
+      const snapshot = window.__DUNGEON_DEBUG__?.getSnapshot() as {
+        placedObjects?: Record<string, { type: string; rotation: [number, number, number] }>
+        selection?: string | null
+      } | undefined
+      if (!snapshot?.selection) {
+        return false
+      }
+      const object = snapshot.placedObjects?.[snapshot.selection]
+      return Boolean(object && object.type === 'player' && Math.abs(object.rotation[1] - Math.PI / 2) < 1e-6)
+    })
+  })
+
+  test('play mode hides the right panel', async ({ page }) => {
+    await page.goto('/')
+    await waitForDebugBridge(page)
+
+    await expect(page.getByTestId('editor-right-panel')).toBeVisible()
+    await page.getByRole('button', { name: 'Play' }).click()
+    await expect(page.getByTestId('editor-right-panel')).toHaveCount(0)
+    await expect(page.getByText('Play', { exact: true })).toBeVisible()
+  })
+
+  test('play mode lets you drag a player to another cell', async ({ page }) => {
+    await page.goto('/')
+    await waitForDebugBridge(page)
+
+    const playerId = await page.evaluate(() => {
+      const state = window.__DUNGEON_DEBUG__?.getSnapshot() as {
+        paintCells: (cells: Array<[number, number]>) => number
+        placeObject: (input: {
+          type: 'player'
+          assetId: string
+          position: [number, number, number]
+          rotation: [number, number, number]
+          props: Record<string, unknown>
+          cell: [number, number]
+          cellKey: string
+        }) => string | null
+      }
+
+      window.__DUNGEON_DEBUG__?.setCameraPreset('top-down')
+      state.paintCells([[0, 0], [1, 0]])
+      return state.placeObject({
+        type: 'player',
+        assetId: 'core.player_barbarian',
+        position: [1, 0, 1],
+        rotation: [0, 0, 0],
+        props: { connector: 'FLOOR', direction: null },
+        cell: [0, 0],
+        cellKey: '0:0:floor',
+      })
+    })
+    expect(playerId).toBeTruthy()
+
+    await page.getByRole('button', { name: 'Play' }).click()
+    await page.waitForTimeout(200)
+
+    await page.waitForFunction(
+      (id) => window.__DUNGEON_DEBUG__?.getObjectScreenPosition(id) !== null,
+      playerId,
+    )
+
+    const start = await page.evaluate((id) => window.__DUNGEON_DEBUG__?.getObjectScreenPosition(id), playerId)
+    expect(start).not.toBeNull()
+
+    await page.mouse.move(start!.x, start!.y)
+    await page.mouse.down()
+    await page.mouse.move(start!.x + 64, start!.y, { steps: 12 })
+    await page.mouse.up()
+
+    await page.waitForFunction(() => {
+      const snapshot = window.__DUNGEON_DEBUG__?.getSnapshot() as {
+        placedObjects?: Record<string, { type: string; cell: [number, number] }>
+      } | undefined
+
+      return Object.values(snapshot?.placedObjects ?? {}).some(
+        (object) => object.type === 'player' && object.cell[0] === 1 && object.cell[1] === 0,
+      )
+    })
+  })
 })

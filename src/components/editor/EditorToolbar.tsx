@@ -6,6 +6,7 @@ import {
   FilePlus2,
   Download,
   Blocks,
+  Joystick,
   MousePointer2,
   Redo2,
   Undo2,
@@ -15,6 +16,7 @@ import {
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
 
 const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; label: string }[] = [
+  { id: 'play',    Icon: Joystick,      label: 'Play' },
   { id: 'select',  Icon: MousePointer2, label: 'Select' },
   { id: 'room',    Icon: Blocks,        label: 'Room' },
   { id: 'prop',    Icon: Box,           label: 'Prop' },
@@ -196,4 +198,3 @@ function FileMenuButton() {
     </div>
   )
 }
-

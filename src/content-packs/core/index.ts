@@ -9,6 +9,7 @@ import { propsPillarAsset } from './props/Pillar'
 import { propsPillarWallAsset } from './props/PillarWall'
 import { openingDoorWall1Asset } from './openings/DoorWall1'
 import { openingDoorWall3Asset } from './openings/DoorWall3'
+import { playerBarbarianAsset } from './players/PlayerBarbarian'
 
 export const coreContentPack: ContentPack = {
   id: 'core',
@@ -22,6 +23,7 @@ export const coreContentPack: ContentPack = {
     propsRubbleAsset,
     propsPillarAsset,
     propsPillarWallAsset,
+    playerBarbarianAsset,
     openingDoorWall1Asset,
     openingDoorWall3Asset,
   ],

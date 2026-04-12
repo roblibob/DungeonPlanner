@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react'
 import type { JSX } from 'react'
 
-export type ContentPackCategory = 'floor' | 'wall' | 'prop' | 'opening'
+export type ContentPackCategory = 'floor' | 'wall' | 'prop' | 'opening' | 'player'
 export type ContentPackComponentProps = JSX.IntrinsicElements['group'] & {
   variantKey?: string
 }
@@ -22,6 +22,8 @@ export type PropLight = {
 export type ContentPackAssetMetadata = {
   connectsTo?: PropConnector
   light?: PropLight
+  /** Whether this asset blocks play-mode line of sight when placed on a floor cell. */
+  blocksLineOfSight?: boolean
   /** Whether this asset's meshes receive shadows. Defaults to true when omitted. */
   receiveShadow?: boolean
   /** Width in wall segments (1–3). Only meaningful for category='opening'. Default 1. */

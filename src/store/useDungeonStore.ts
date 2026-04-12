@@ -5,7 +5,7 @@ import { getCellKey, type GridCell } from '../hooks/useSnapToGrid'
 import type { ContentPackCategory, PropConnector } from '../content-packs/types'
 import { serializeDungeon, deserializeDungeon } from './serialization'
 
-export type DungeonTool = 'move' | 'room' | 'prop' | 'opening' | 'select'
+export type DungeonTool = 'move' | 'room' | 'prop' | 'opening' | 'select' | 'play'
 export type CameraMode = 'orbit'
 export type CameraPreset = 'perspective' | 'isometric' | 'top-down'
 export type SelectedAssetIds = Record<ContentPackCategory, string | null>
@@ -57,9 +57,11 @@ export type OpeningRecord = {
 
 type PlaceOpeningInput = Pick<OpeningRecord, 'assetId' | 'wallKey' | 'width' | 'flipped'>
 
+export type DungeonObjectType = 'prop' | 'player'
+
 export type DungeonObjectRecord = {
   id: string
-  type: 'prop'
+  type: DungeonObjectType
   assetId: string | null
   position: [number, number, number]
   rotation: [number, number, number]
@@ -71,6 +73,7 @@ export type DungeonObjectRecord = {
 
 type DungeonSnapshot = {
   paintedCells: PaintedCells
+  exploredCells: Record<string, true>
   placedObjects: Record<string, DungeonObjectRecord>
   wallOpenings: Record<string, OpeningRecord>
   occupancy: Record<string, string>
@@ -89,6 +92,8 @@ type PlaceObjectInput = Pick<
   'type' | 'assetId' | 'position' | 'rotation' | 'props' | 'cell' | 'cellKey'
 >
 
+type MoveObjectInput = Pick<DungeonObjectRecord, 'position' | 'cell' | 'cellKey'>
+
 export type SceneLighting = {
   intensity: number // multiplier applied to all scene lights, 0–2
 }
@@ -103,6 +108,7 @@ export type PostProcessingSettings = {
 type DungeonState = DungeonSnapshot & {
   cameraMode: CameraMode
   isPaintingStrokeActive: boolean
+  isObjectDragActive: boolean
   sceneLighting: SceneLighting
   postProcessing: PostProcessingSettings
   showGrid: boolean
@@ -113,13 +119,17 @@ type DungeonState = DungeonSnapshot & {
   paintCells: (cells: GridCell[]) => number
   eraseCells: (cells: GridCell[]) => number
   placeObject: (input: PlaceObjectInput) => string | null
+  moveObject: (id: string, input: MoveObjectInput) => boolean
+  mergeExploredCells: (cellKeys: string[]) => void
   removeObject: (id: string) => void
   removeObjectAtCell: (cellKey: string) => void
   removeSelectedObject: () => void
+  rotateSelection: () => void
   selectObject: (id: string | null) => void
   setTool: (tool: DungeonTool) => void
   setSelectedAsset: (category: ContentPackCategory, assetId: string) => void
   setPaintingStrokeActive: (active: boolean) => void
+  setObjectDragActive: (active: boolean) => void
   setSceneLightingIntensity: (intensity: number) => void
   setPostProcessing: (settings: Partial<PostProcessingSettings>) => void
   setShowGrid: (show: boolean) => void
@@ -191,6 +201,7 @@ function cloneSnapshot(snapshot: DungeonSnapshot): DungeonSnapshot {
         { cell: [...record.cell] as GridCell, layerId: record.layerId, roomId: record.roomId },
       ]),
     ),
+    exploredCells: { ...snapshot.exploredCells },
     placedObjects: Object.fromEntries(
       Object.entries(snapshot.placedObjects).map(([id, object]) => [
         id,
@@ -226,6 +237,7 @@ function createEmptySnapshot(): DungeonSnapshot {
   const defaultLayer = createDefaultLayer()
   return {
     paintedCells: {},
+    exploredCells: {},
     placedObjects: {},
     wallOpenings: {},
     occupancy: {},
@@ -235,6 +247,7 @@ function createEmptySnapshot(): DungeonSnapshot {
       wall: getDefaultAssetIdByCategory('wall'),
       prop: getDefaultAssetIdByCategory('prop'),
       opening: getDefaultAssetIdByCategory('opening'),
+      player: getDefaultAssetIdByCategory('player'),
     },
     selection: null,
     layers: { [DEFAULT_LAYER_ID]: defaultLayer },
@@ -416,6 +429,7 @@ export const useDungeonStore = create<DungeonState>()(
   dungeonName: 'My Dungeon',
   cameraMode: 'orbit',
   isPaintingStrokeActive: false,
+  isObjectDragActive: false,
   sceneLighting: { intensity: 1 },
   postProcessing: { enabled: false, focusDistance: 0.5, focalLength: 3, bokehScale: 2 },
   showGrid: true,
@@ -568,7 +582,7 @@ export const useDungeonStore = create<DungeonState>()(
 
       placedObjects[nextId] = {
         id: nextId,
-        type: 'prop',
+        type: input.type,
         assetId: input.assetId,
         position: [...input.position] as DungeonObjectRecord['position'],
         rotation: [...input.rotation] as DungeonObjectRecord['rotation'],
@@ -601,6 +615,95 @@ export const useDungeonStore = create<DungeonState>()(
     }
 
     return nextId
+  },
+  moveObject: (id, input) => {
+    const state = get()
+    const object = state.placedObjects[id]
+
+    if (!object) {
+      return false
+    }
+
+    if (!state.paintedCells[getCellKey(input.cell)]) {
+      return false
+    }
+
+    const occupantId = state.occupancy[input.cellKey]
+    if (occupantId && occupantId !== id) {
+      return false
+    }
+
+    const unchanged =
+      object.cellKey === input.cellKey &&
+      object.cell[0] === input.cell[0] &&
+      object.cell[1] === input.cell[1] &&
+      object.position.every((value, index) => value === input.position[index])
+
+    if (unchanged) {
+      return true
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+
+    set((current) => {
+      const currentObject = current.placedObjects[id]
+      if (!currentObject) {
+        return current
+      }
+
+      const placedObjects = {
+        ...current.placedObjects,
+        [id]: {
+          ...currentObject,
+          position: [...input.position] as DungeonObjectRecord['position'],
+          cell: [...input.cell] as GridCell,
+          cellKey: input.cellKey,
+        },
+      }
+      const occupancy = { ...current.occupancy }
+
+      delete occupancy[currentObject.cellKey]
+      occupancy[input.cellKey] = id
+
+      return {
+        ...current,
+        placedObjects,
+        occupancy,
+        selection: id,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+
+    return true
+  },
+  mergeExploredCells: (cellKeys) => {
+    if (cellKeys.length === 0) {
+      return
+    }
+
+    set((current) => {
+      let changed = false
+      const exploredCells = { ...current.exploredCells }
+
+      for (const cellKey of cellKeys) {
+        if (!current.paintedCells[cellKey] || exploredCells[cellKey]) {
+          continue
+        }
+
+        exploredCells[cellKey] = true
+        changed = true
+      }
+
+      if (!changed) {
+        return current
+      }
+
+      return {
+        ...current,
+        exploredCells,
+      }
+    })
   },
   removeObject: (id) => {
     const state = get()
@@ -646,6 +749,61 @@ export const useDungeonStore = create<DungeonState>()(
     }
 
     get().removeObject(selection)
+  },
+  rotateSelection: () => {
+    const state = get()
+    const selection = state.selection
+
+    if (!selection) {
+      return
+    }
+
+    const selectedObject = state.placedObjects[selection]
+    if (selectedObject) {
+      const connector = selectedObject.props.connector
+      const rotationStep =
+        connector === 'WALL' || connector === 'WALLFLOOR'
+          ? Math.PI
+          : Math.PI / 2
+      const previousSnapshot = cloneSnapshot(state)
+
+      set((current) => ({
+        ...current,
+        placedObjects: {
+          ...current.placedObjects,
+          [selection]: {
+            ...current.placedObjects[selection],
+            rotation: [
+              current.placedObjects[selection].rotation[0],
+              current.placedObjects[selection].rotation[1] + rotationStep,
+              current.placedObjects[selection].rotation[2],
+            ],
+          },
+        },
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }))
+      return
+    }
+
+    const selectedOpening = state.wallOpenings[selection]
+    if (!selectedOpening) {
+      return
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => ({
+      ...current,
+      wallOpenings: {
+        ...current.wallOpenings,
+        [selection]: {
+          ...current.wallOpenings[selection],
+          flipped: !(current.wallOpenings[selection].flipped ?? false),
+        },
+      },
+      history: [...current.history, previousSnapshot],
+      future: [],
+    }))
   },
   selectObject: (id) => {
     set((state) => ({
@@ -697,6 +855,18 @@ export const useDungeonStore = create<DungeonState>()(
       return {
         ...state,
         isPaintingStrokeActive: active,
+      }
+    })
+  },
+  setObjectDragActive: (active) => {
+    set((state) => {
+      if (state.isObjectDragActive === active) {
+        return state
+      }
+
+      return {
+        ...state,
+        isObjectDragActive: active,
       }
     })
   },
@@ -753,13 +923,14 @@ export const useDungeonStore = create<DungeonState>()(
     }))
   },
   reset: () => {
-    set((state) => ({
-      ...state,
-      ...createEmptySnapshot(),
-      isPaintingStrokeActive: false,
-      activeCameraMode: 'perspective',
-      cameraPreset: null,
-      history: [],
+      set((state) => ({
+        ...state,
+        ...createEmptySnapshot(),
+        isPaintingStrokeActive: false,
+        isObjectDragActive: false,
+        activeCameraMode: 'perspective',
+        cameraPreset: null,
+        history: [],
       future: [],
     }))
   },
@@ -769,10 +940,11 @@ export const useDungeonStore = create<DungeonState>()(
     const fresh = createEmptySnapshot()
     set({
       // Snapshot (rooms, cells, objects, etc.)
-      ...fresh,
-      // UI / tool state
-      isPaintingStrokeActive: false,
-      cameraMode: 'orbit',
+       ...fresh,
+       // UI / tool state
+       isPaintingStrokeActive: false,
+       isObjectDragActive: false,
+       cameraMode: 'orbit',
       activeCameraMode: 'perspective',
       cameraPreset: 'perspective', // triggers camera to home position
       // Settings reset to defaults
@@ -1296,6 +1468,7 @@ export const useDungeonStore = create<DungeonState>()(
       activeLayerId: state.activeLayerId,
       rooms: state.rooms,
       paintedCells: state.paintedCells,
+      exploredCells: state.exploredCells,
       placedObjects: state.placedObjects,
       wallOpenings: state.wallOpenings,
       occupancy: state.occupancy,
@@ -1323,6 +1496,7 @@ export const useDungeonStore = create<DungeonState>()(
       ...parsed,
       dungeonName: parsed.name ?? current.dungeonName,
       isPaintingStrokeActive: false,
+      isObjectDragActive: false,
       activeCameraMode: 'perspective',
       cameraPreset: null,
       history: [],
@@ -1340,6 +1514,7 @@ export const useDungeonStore = create<DungeonState>()(
       partialize: (state) => ({
         dungeonName: state.dungeonName,
         paintedCells: state.paintedCells,
+        exploredCells: state.exploredCells,
         placedObjects: state.placedObjects,
         wallOpenings: state.wallOpenings,
         occupancy: state.occupancy,

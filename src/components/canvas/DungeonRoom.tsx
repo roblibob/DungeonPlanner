@@ -18,6 +18,7 @@ import {
 import { getBuildYOffset, isAnimationActive } from '../../store/buildAnimations'
 import { ContentPackInstance } from './ContentPackInstance'
 import { registerObject, unregisterObject } from './objectRegistry'
+import type { PlayVisibility, PlayVisibilityState } from './playVisibility'
 
 const WALL_EXTRA_DELAY_MS = 70
 
@@ -48,7 +49,7 @@ type CellGroup = {
   cells: GridCell[]
 }
 
-export function DungeonRoom() {
+export function DungeonRoom({ visibility }: { visibility: PlayVisibility }) {
   const paintedCells = useDungeonStore((state) => state.paintedCells)
   const layers = useDungeonStore((state) => state.layers)
   const rooms = useDungeonStore((state) => state.rooms)
@@ -114,16 +115,17 @@ export function DungeonRoom() {
   return (
     <>
       {cellGroups.map((group) => (
-        <CellGroupRenderer
-          key={`${group.floorAssetId}||${group.wallAssetId}`}
-          group={group}
-          paintedCells={paintedCells}
-          suppressedWallKeys={suppressedWallKeys}
-          blockedFloorCellKeys={blockedFloorCellKeys}
-        />
-      ))}
+          <CellGroupRenderer
+            key={`${group.floorAssetId}||${group.wallAssetId}`}
+            group={group}
+            paintedCells={paintedCells}
+            suppressedWallKeys={suppressedWallKeys}
+            blockedFloorCellKeys={blockedFloorCellKeys}
+            visibility={visibility}
+          />
+        ))}
       {Object.values(wallOpenings).map((opening) => (
-        <OpeningRenderer key={opening.id} opening={opening} />
+        <OpeningRenderer key={opening.id} opening={opening} visibility={visibility} />
       ))}
     </>
   )
@@ -134,11 +136,13 @@ function CellGroupRenderer({
   paintedCells,
   suppressedWallKeys,
   blockedFloorCellKeys,
+  visibility,
 }: {
   group: CellGroup
   paintedCells: PaintedCells
   suppressedWallKeys: Set<string>
   blockedFloorCellKeys: Set<string>
+  visibility: PlayVisibility
 }) {
   const walls = useMemo(
     () => deriveRoomWalls(group.cells, paintedCells, suppressedWallKeys),
@@ -157,6 +161,7 @@ function CellGroupRenderer({
               position={cellToWorldPosition(cell)}
               variant="floor"
               variantKey={key}
+              visibility={visibility.getCellVisibility(key)}
             />
           </AnimatedTileGroup>
         )
@@ -172,6 +177,7 @@ function CellGroupRenderer({
               rotation={wall.rotation}
               variant="wall"
               variantKey={wall.key}
+              visibility={visibility.getWallVisibility(wall.key)}
             />
           </AnimatedTileGroup>
         )
@@ -256,7 +262,13 @@ function deriveRoomWalls(
   return walls
 }
 
-function OpeningRenderer({ opening }: { opening: OpeningRecord }) {
+function OpeningRenderer({
+  opening,
+  visibility,
+}: {
+  opening: OpeningRecord
+  visibility: PlayVisibility
+}) {
   const layers = useDungeonStore((state) => state.layers)
   const selection = useDungeonStore((state) => state.selection)
   const selectObject = useDungeonStore((state) => state.selectObject)
@@ -298,10 +310,18 @@ function OpeningRenderer({ opening }: { opening: OpeningRecord }) {
         assetId={opening.assetId}
         selected={selected && !ppEnabled}
         variant="wall"
+        visibility={visibility.getWallVisibility(opening.wallKey)}
         onClick={handleClick}
       />
     </group>
   )
+}
+
+export function getWallVisibilityState(
+  visibility: PlayVisibility,
+  wallKey: string,
+): PlayVisibilityState {
+  return visibility.getWallVisibility(wallKey)
 }
 
 /** Convert a wall key ("x:z:direction") to world position + rotation. */

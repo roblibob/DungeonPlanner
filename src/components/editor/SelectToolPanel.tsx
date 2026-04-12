@@ -12,21 +12,22 @@ export function SelectToolPanel() {
   const removeSelectedObject = useDungeonStore((state) => state.removeSelectedObject)
   const removeOpening = useDungeonStore((state) => state.removeOpening)
 
-  const propAsset = selectedObject?.assetId ? getContentPackAssetById(selectedObject.assetId) : null
+  const objectAsset = selectedObject?.assetId ? getContentPackAssetById(selectedObject.assetId) : null
   const openingAsset = selectedOpening?.assetId ? getContentPackAssetById(selectedOpening.assetId) : null
+  const isCharacterSelection = selectedObject?.type === 'player' || objectAsset?.category === 'player'
 
   if (selectedObject) {
     return (
       <div className="space-y-4">
         <section>
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-sky-200/70">
-            Selected Prop
+            {isCharacterSelection ? 'Selected Character' : 'Selected Prop'}
           </p>
           <div className="rounded-2xl border border-stone-800 bg-stone-900/80 p-4">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                  {propAsset?.name ?? selectedObject.type}
+                  {objectAsset?.name ?? selectedObject.type}
                 </p>
                 <p className="mt-1 font-mono text-sm text-stone-200">
                   {selectedObject.id.slice(0, 8)}
@@ -90,8 +91,8 @@ export function SelectToolPanel() {
   return (
     <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-xs leading-6 text-stone-400">
       <p className="font-medium text-stone-300">Select Tool</p>
-      <p className="mt-1">Click a prop or opening in the scene to inspect it.</p>
-      <p>Press <kbd>Esc</kbd> to deselect. <kbd>Del</kbd> to delete.</p>
+      <p className="mt-1">Click a prop, character, or opening in the scene to inspect it.</p>
+      <p>Press <kbd>R</kbd> to rotate, <kbd>Esc</kbd> to deselect, and <kbd>Del</kbd> to delete.</p>
     </section>
   )
 }
