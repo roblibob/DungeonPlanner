@@ -45,7 +45,10 @@ app.get('*', (_req, res) => {
 const httpServer = createServer(app)
 
 const gameServer = new Server({
-  transport: new WebSocketTransport({ server: httpServer }),
+  transport: new WebSocketTransport({
+    server: httpServer,
+    maxPayload: 50 * 1024 * 1024, // 50 MB — map JSON can be large
+  }),
 })
 
 gameServer.define('dungeon', DungeonRoom)
