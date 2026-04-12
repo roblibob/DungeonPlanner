@@ -5,7 +5,8 @@
 import { create } from 'zustand'
 import type { Room } from '@colyseus/sdk'
 import type { DungeonState, Entity } from './colyseusTypes'
-import { getCellKey } from '../hooks/useSnapToGrid'
+import { getCellKey, GRID_SIZE } from '../hooks/useSnapToGrid'
+import { generateId } from '../utils/generateId'
 
 export type ClientRole = 'dm' | 'player' | 'offline'
 
@@ -24,14 +25,24 @@ type MultiplayerState = {
   /** Cells that have ever been visible to the players. Persists across moves. */
   discoveredCells: Set<string>
 
-  setRole:         (role: ClientRole) => void
-  setConnected:    (connected: boolean) => void
-  setRoom:         (room: Room<DungeonState> | null, sessionId: string | null) => void
-  setEntities:     (entities: Record<string, EntitySnapshot>) => void
-  updateEntity:    (id: string, patch: Partial<EntitySnapshot>) => void
-  removeEntity:    (id: string) => void
-  discoverCells:   (cellKeys: string[]) => void
-  resetDiscovered: () => void
+  /** Config used when placing the next token by clicking the canvas */
+  pendingToken: { name: string; type: 'PLAYER' | 'NPC'; movementRange: number }
+
+  setRole:          (role: ClientRole) => void
+  setConnected:     (connected: boolean) => void
+  setRoom:          (room: Room<DungeonState> | null, sessionId: string | null) => void
+  setEntities:      (entities: Record<string, EntitySnapshot>) => void
+  updateEntity:     (id: string, patch: Partial<EntitySnapshot>) => void
+  removeEntity:     (id: string) => void
+  discoverCells:    (cellKeys: string[]) => void
+  resetDiscovered:  () => void
+  setPendingToken:  (patch: Partial<MultiplayerState['pendingToken']>) => void
+
+  /**
+   * Place a token at a grid cell.
+   * Works offline (adds directly to local store) and online (sends to server).
+   */
+  placeToken: (cellX: number, cellZ: number) => void
 }
 
 export type EntitySnapshot = {
@@ -75,13 +86,14 @@ export function getCellsInRadius(cx: number, cz: number, radius: number): string
   return keys
 }
 
-export const useMultiplayerStore = create<MultiplayerState>((set) => ({
+export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
   role:      'offline',
   connected: false,
   sessionId: null,
   room:      null,
   entities:  {},
   discoveredCells: new Set<string>(),
+  pendingToken: { name: 'Token', type: 'PLAYER', movementRange: 10 },
 
   setRole:      (role) => set({ role }),
   setConnected: (connected) => set({ connected }),
@@ -97,7 +109,6 @@ export const useMultiplayerStore = create<MultiplayerState>((set) => ({
     }),
   discoverCells: (cellKeys) =>
     set((s) => {
-      // Immutably add new cells (avoid re-render if nothing changed)
       const newCells = cellKeys.filter((k) => !s.discoveredCells.has(k))
       if (newCells.length === 0) return s
       const next = new Set(s.discoveredCells)
@@ -105,6 +116,43 @@ export const useMultiplayerStore = create<MultiplayerState>((set) => ({
       return { discoveredCells: next }
     }),
   resetDiscovered: () => set({ discoveredCells: new Set() }),
+  setPendingToken: (patch) =>
+    set((s) => ({ pendingToken: { ...s.pendingToken, ...patch } })),
+
+  placeToken: (cellX, cellZ) => {
+    const { room, pendingToken } = get()
+    const id = generateId()
+    const snapshot: EntitySnapshot = {
+      id,
+      type:             pendingToken.type,
+      cellX,
+      cellZ,
+      worldX:           (cellX + 0.5) * GRID_SIZE,
+      worldZ:           (cellZ + 0.5) * GRID_SIZE,
+      movementRange:    pendingToken.movementRange,
+      assetId:          '',
+      name:             pendingToken.name,
+      visibleToPlayers: true,
+    }
+
+    if (room) {
+      // Online: let server create the authoritative entity
+      room.send('placeToken', {
+        id:            snapshot.id,
+        type:          snapshot.type,
+        cellX:         snapshot.cellX,
+        cellZ:         snapshot.cellZ,
+        name:          snapshot.name,
+        assetId:       snapshot.assetId,
+        movementRange: snapshot.movementRange,
+      })
+      // Optimistic local add (will be overwritten by server patch)
+      set((s) => ({ entities: { ...s.entities, [id]: snapshot } }))
+    } else {
+      // Offline: manage entities locally
+      set((s) => ({ entities: { ...s.entities, [id]: snapshot } }))
+    }
+  },
 }))
 
 /** Convenience selector — true when connected as DM */

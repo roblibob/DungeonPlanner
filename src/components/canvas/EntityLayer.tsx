@@ -9,14 +9,16 @@ import { useMultiplayerStore, useIsDM } from '../../multiplayer/useMultiplayerSt
 import { useDungeonStore } from '../../store/useDungeonStore'
 import { EntityToken } from './EntityToken'
 import { PathPreview } from './PathPreview'
-import { snapWorldPointToGrid } from '../../hooks/useSnapToGrid'
+import { snapWorldPointToGrid, getCellKey, GRID_SIZE } from '../../hooks/useSnapToGrid'
 import type { GridCell } from '../../hooks/useSnapToGrid'
 
 export function EntityLayer() {
-  const entities   = useMultiplayerStore((s) => s.entities)
-  const room       = useMultiplayerStore((s) => s.room)
-  const isDM       = useIsDM()
-  const tool       = useDungeonStore((s) => s.tool)
+  const entities      = useMultiplayerStore((s) => s.entities)
+  const room          = useMultiplayerStore((s) => s.room)
+  const placeToken    = useMultiplayerStore((s) => s.placeToken)
+  const paintedCells  = useDungeonStore((s) => s.paintedCells)
+  const isDM          = useIsDM()
+  const tool          = useDungeonStore((s) => s.tool)
 
   // Click-select state (used by players; DM uses drag instead)
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
@@ -47,9 +49,16 @@ export function EntityLayer() {
         entityId: draggingEntityId,
         targetCell: [snapped.cell[0], snapped.cell[1]],
       })
+      // If offline, update locally
+      if (!room) {
+        const [cx, cz] = snapped.cell
+        useMultiplayerStore.getState().updateEntity(draggingEntityId, {
+          cellX: cx, cellZ: cz,
+          worldX: (cx + 0.5) * GRID_SIZE, worldZ: (cz + 0.5) * GRID_SIZE,
+        })
+      }
       setDraggingEntityId(null)
       setHoverCell(null)
-      return
     }
   }
 
@@ -76,15 +85,31 @@ export function EntityLayer() {
   }
 
   function handleCanvasClick(e: ThreeEvent<MouseEvent>) {
-    if (tool !== 'token' || !selectedEntity) return
+    if (tool !== 'token') return
+
+    // DM drag just finished — don't also fire a click
+    if (draggingEntityId) return
+
     const snapped = snapWorldPointToGrid(e.point)
-    const action = isDM ? 'forceMoveEntity' : 'requestMove'
-    room?.send(action, {
-      entityId: selectedEntity.id,
-      targetCell: [snapped.cell[0], snapped.cell[1]],
-    })
-    setSelectedEntityId(null)
-    setHoverCell(null)
+    const [cx, cz] = snapped.cell
+
+    if (selectedEntity) {
+      // Move selected entity to clicked cell
+      const action = isDM ? 'forceMoveEntity' : 'requestMove'
+      room?.send(action, {
+        entityId: selectedEntity.id,
+        targetCell: [cx, cz],
+      })
+      setSelectedEntityId(null)
+      setHoverCell(null)
+      return
+    }
+
+    if (isDM) {
+      // Only place on painted (walkable) floor cells
+      if (!paintedCells[getCellKey([cx, cz])]) return
+      placeToken(cx, cz)
+    }
   }
 
   // Entity used for the path/ghost preview (drag takes priority over click-select)

@@ -1,26 +1,38 @@
-import { useState } from 'react'
 import { useMultiplayerStore, useIsDM } from '../../multiplayer/useMultiplayerStore'
 
 const DEFAULT_MOVEMENT_RANGE = 10
 
 export function TokenToolPanel() {
-  const isDM = useIsDM()
-  const entities = useMultiplayerStore((s) => s.entities)
-  const room     = useMultiplayerStore((s) => s.room)
-
-  const [newName,   setNewName]   = useState('Token')
-  const [newType,   setNewType]   = useState<'PLAYER' | 'NPC'>('PLAYER')
+  const isDM          = useIsDM()
+  const entities      = useMultiplayerStore((s) => s.entities)
+  const room          = useMultiplayerStore((s) => s.room)
+  const pendingToken  = useMultiplayerStore((s) => s.pendingToken)
+  const setPending    = useMultiplayerStore((s) => s.setPendingToken)
+  const removeEntity  = useMultiplayerStore((s) => s.removeEntity)
 
   function handleRemove(id: string) {
-    room?.send('removeToken', { entityId: id })
+    if (room) {
+      room.send('removeToken', { entityId: id })
+    } else {
+      // Offline: remove locally
+      removeEntity(id)
+    }
   }
 
   function handleToggleVisible(id: string, current: boolean) {
-    room?.send('toggleVisible', { entityId: id, visible: !current })
+    if (room) {
+      room.send('toggleVisible', { entityId: id, visible: !current })
+    } else {
+      useMultiplayerStore.getState().updateEntity(id, { visibleToPlayers: !current })
+    }
   }
 
   function handlePatch(id: string, patch: Record<string, unknown>) {
-    room?.send('patchEntity', { entityId: id, patch })
+    if (room) {
+      room.send('patchEntity', { entityId: id, patch })
+    } else {
+      useMultiplayerStore.getState().updateEntity(id, patch as never)
+    }
   }
 
   return (
@@ -34,8 +46,8 @@ export function TokenToolPanel() {
           <div className="space-y-2">
             <input
               type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              value={pendingToken.name}
+              onChange={(e) => setPending({ name: e.target.value })}
               placeholder="Token name"
               className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400/40"
             />
@@ -44,9 +56,9 @@ export function TokenToolPanel() {
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setNewType(t)}
+                  onClick={() => setPending({ type: t })}
                   className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition ${
-                    newType === t
+                    pendingToken.type === t
                       ? t === 'PLAYER'
                         ? 'border-sky-400/40 bg-sky-400/10 text-sky-300'
                         : 'border-rose-400/40 bg-rose-400/10 text-rose-300'
@@ -59,7 +71,7 @@ export function TokenToolPanel() {
             </div>
           </div>
           <p className="mt-2 text-xs text-stone-500">
-            Click a floor cell to place.
+            Click a floor cell in the canvas to place.
           </p>
         </section>
       )}
