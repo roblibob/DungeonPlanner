@@ -12,7 +12,9 @@
     "@colyseus/core": "^0.17.41",
     "@colyseus/schema": "^4.0.19",
     "@colyseus/ws-transport": "^0.17.13",
+    "@types/cors": "^2.8.19",
     "colyseus": "^0.17.9",
+    "cors": "^2.8.6",
     "express": "^4.21.0"
   },
   "devDependencies": {

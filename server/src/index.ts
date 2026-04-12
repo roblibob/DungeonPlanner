@@ -1,4 +1,5 @@
 import express from 'express'
+import cors from 'cors'
 import { createServer } from 'http'
 import { Server } from 'colyseus'
 import { WebSocketTransport } from '@colyseus/ws-transport'
@@ -12,6 +13,22 @@ const PORT = Number(process.env.PORT) || 2567
 
 // ── Express app ───────────────────────────────────────────────────────────────
 const app = express()
+
+// Allow requests from the Vite dev server (any localhost origin) and from the
+// same-host production case. Colyseus WebSocket handshake also uses HTTP.
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (e.g. same-origin prod, curl), or any
+    // localhost / 127.0.0.1 origin (Vite dev server on any port).
+    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      cb(null, true)
+    } else {
+      cb(null, true) // allow all LAN origins — users run on a local network
+    }
+  },
+  credentials: true,
+}))
+
 app.use(express.json({ limit: '10mb' }))
 
 // Serve the built frontend from ../dist (relative to this file at build time,
