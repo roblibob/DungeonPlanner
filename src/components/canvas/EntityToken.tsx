@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
@@ -23,6 +23,10 @@ export function EntityToken({ entity, selected, isDragging = false, onClick, onP
   const isDM = useIsDM()
   const groupRef  = useRef<THREE.Group>(null)
   const ringRef   = useRef<THREE.Mesh>(null)
+  // troika-three-text (drei <Text>) creates geometry with drawRange.count=Infinity
+  // on first mount before async text layout runs. WebGPU rejects non-finite draw
+  // counts. Gate visibility via onSync so the mesh only renders once layout is done.
+  const [labelReady, setLabelReady] = useState(false)
 
   // Current rendered world position (smoothly lerped)
   const posRef = useRef({ x: entity.worldX, z: entity.worldZ })
@@ -79,7 +83,7 @@ export function EntityToken({ entity, selected, isDragging = false, onClick, onP
         />
       </mesh>
 
-      {/* Name label */}
+      {/* Name label – visible only after troika text geometry is first computed */}
       <Text
         position={[0, 0.55, 0]}
         fontSize={0.28}
@@ -88,6 +92,8 @@ export function EntityToken({ entity, selected, isDragging = false, onClick, onP
         anchorY="bottom"
         outlineWidth={0.04}
         outlineColor="#1c1917"
+        visible={labelReady}
+        onSync={() => setLabelReady(true)}
       >
         {entity.name}
         {!entity.visibleToPlayers && isDM ? ' 🙈' : ''}

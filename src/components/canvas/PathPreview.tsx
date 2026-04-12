@@ -4,7 +4,7 @@
  * the hovered cell. Cells within movementRange are green, beyond are red.
  * A step-count label floats above the target cell.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
 import type { GridCell } from '../../hooks/useSnapToGrid'
@@ -26,6 +26,7 @@ type Props = {
 
 export function PathPreview({ entity, hoverCell, instantMove = false }: Props) {
   const paintedCells = useDungeonStore((s) => s.paintedCells)
+  const [labelReady, setLabelReady] = useState(false)
 
   const { path, inRange } = useMemo(() => {
     if (instantMove) return { path: null, inRange: true }
@@ -97,7 +98,7 @@ export function PathPreview({ entity, hoverCell, instantMove = false }: Props) {
         )
       })}
 
-      {/* Step count label at target */}
+      {/* Step count label – gated behind onSync for WebGPU safety */}
       <Text
         position={[targetWorld[0], 0.7, targetWorld[2]]}
         fontSize={0.32}
@@ -106,6 +107,8 @@ export function PathPreview({ entity, hoverCell, instantMove = false }: Props) {
         anchorY="bottom"
         outlineWidth={0.05}
         outlineColor="#1c1917"
+        visible={labelReady}
+        onSync={() => setLabelReady(true)}
       >
         {inRange ? `${steps} / ${entity.movementRange}` : `${steps} ✗`}
       </Text>
