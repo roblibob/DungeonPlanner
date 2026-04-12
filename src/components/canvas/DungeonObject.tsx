@@ -6,18 +6,26 @@ import { ContentPackInstance } from './ContentPackInstance'
 import { getContentPackAssetById } from '../../content-packs/registry'
 import type { PropLight } from '../../content-packs/types'
 import { registerObject, unregisterObject } from './objectRegistry'
-import { useIsDM } from '../../multiplayer/useMultiplayerStore'
+import type { PlayVisibility } from './playVisibility'
 
-type DungeonObjectProps = { object: DungeonObjectRecord }
+type DungeonObjectProps = {
+  object: DungeonObjectRecord
+  visibility: PlayVisibility
+  onPlayDragStart?: (object: DungeonObjectRecord) => void
+}
 
-export const DungeonObject = memo(function DungeonObject({ object }: DungeonObjectProps) {
+export const DungeonObject = memo(function DungeonObject({
+  object,
+  visibility,
+  onPlayDragStart,
+}: DungeonObjectProps) {
   const selection = useDungeonStore((state) => state.selection)
   const selectObject = useDungeonStore((state) => state.selectObject)
   const removeObject = useDungeonStore((state) => state.removeObject)
   const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const tool = useDungeonStore((state) => state.tool)
-  const isDM = useIsDM()
   const selected = selection === object.id
+  const visibilityState = visibility.getObjectVisibility(`${object.cell[0]}:${object.cell[1]}`)
 
   const groupRef = useRef<Group>(null)
   useLayoutEffect(() => {
@@ -39,8 +47,20 @@ export const DungeonObject = memo(function DungeonObject({ object }: DungeonObje
     selectObject(object.id)
   }
 
+  function handlePointerDown(event: ThreeEvent<PointerEvent>) {
+    if (tool !== 'play' || object.type !== 'player' || event.button !== 0) {
+      return
+    }
+
+    event.stopPropagation()
+    selectObject(object.id)
+    onPlayDragStart?.(object)
+  }
+
   function handleContextMenu(event: ThreeEvent<PointerEvent>) {
-    if (!isDM) return
+    if (tool === 'play') {
+      return
+    }
     event.stopPropagation()
     event.nativeEvent.preventDefault()
     removeObject(object.id)
@@ -56,12 +76,14 @@ export const DungeonObject = memo(function DungeonObject({ object }: DungeonObje
         assetId={object.assetId}
         selected={showHullOutline}
         variantKey={object.cellKey}
+        visibility={visibilityState}
         userData={{ objectId: object.id }}
+        onPointerDown={handlePointerDown}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         variant="prop"
       />
-      {light && <PropPointLight light={light} />}
+      {light && visibilityState === 'visible' && <PropPointLight light={light} />}
     </group>
   )
 })

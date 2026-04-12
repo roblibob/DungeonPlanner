@@ -10,9 +10,12 @@ export function PropToolPanel() {
   )
   const removeSelectedObject = useDungeonStore((state) => state.removeSelectedObject)
   const propAssets = getContentPackAssetsByCategory('prop')
+  const playerAssets = getContentPackAssetsByCategory('player')
+  const placeableAssets = [...propAssets, ...playerAssets]
   const selectedAsset = selectedObject?.assetId
     ? getContentPackAssetById(selectedObject.assetId)
     : null
+  const isCharacterSelection = selectedObject?.type === 'player' || selectedAsset?.category === 'player'
 
   return (
     <div className="space-y-4">
@@ -22,7 +25,7 @@ export function PropToolPanel() {
           Props
         </p>
         <div className="grid gap-2">
-          {propAssets.map((asset) => {
+          {placeableAssets.map((asset) => {
             const active = selectedAssetIds.prop === asset.id
             return (
               <button
@@ -49,7 +52,7 @@ export function PropToolPanel() {
       </section>
 
       <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-xs leading-6 text-stone-400">
-        <p className="font-medium text-stone-300">Prop Tool</p>
+        <p className="font-medium text-stone-300">Placement Tool</p>
         <p className="mt-1">Click a room cell to place. Right-click to remove.</p>
         <p>Hold <kbd>Alt</kbd> + click to inspect.</p>
       </section>
@@ -58,7 +61,7 @@ export function PropToolPanel() {
       {selectedObject && (
         <section>
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-sky-200/70">
-            Selected Prop
+            {isCharacterSelection ? 'Selected Character' : 'Selected Prop'}
           </p>
           <div className="rounded-2xl border border-stone-800 bg-stone-900/80 p-4">
             <div className="mb-3 flex items-start justify-between gap-3">

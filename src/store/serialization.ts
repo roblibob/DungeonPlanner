@@ -5,8 +5,10 @@
  * `migrateFile` whenever the schema changes in a breaking way.
  */
 import { getDefaultAssetIdByCategory } from '../content-packs/registry'
+import { getContentPackAssetById } from '../content-packs/registry'
 import type {
   DungeonObjectRecord,
+  DungeonObjectType,
   FloorRecord,
   Layer,
   OpeningRecord,
@@ -16,7 +18,7 @@ import type {
 import type { GridCell } from '../hooks/useSnapToGrid'
 import { getCellKey } from '../hooks/useSnapToGrid'
 
-const CURRENT_VERSION = 5
+const CURRENT_VERSION = 7
 
 // ── Serialized shapes (compact, no redundant keys) ────────────────────────────
 
@@ -29,6 +31,7 @@ type SerializedCell = {
 
 type SerializedObject = {
   id: string
+  type: DungeonObjectType
   assetId: string | null
   position: [number, number, number]
   rotation: [number, number, number]
@@ -56,6 +59,7 @@ type SerializedFloor = {
   activeLayerId: string
   rooms: Room[]
   cells: SerializedCell[]
+  exploredCells: string[]
   objects: SerializedObject[]
   openings: SerializedOpening[]
   nextRoomNumber: number
@@ -83,6 +87,7 @@ export type SerializableState = {
   activeLayerId: string
   rooms: Record<string, Room>
   paintedCells: PaintedCells
+  exploredCells: Record<string, true>
   placedObjects: Record<string, DungeonObjectRecord>
   wallOpenings: Record<string, OpeningRecord>
   occupancy: Record<string, string>
@@ -105,6 +110,7 @@ function serializeFloorData(
     activeLayerId: string
     rooms: Record<string, Room>
     paintedCells: PaintedCells
+    exploredCells: Record<string, true>
     placedObjects: Record<string, DungeonObjectRecord>
     wallOpenings: Record<string, OpeningRecord>
     nextRoomNumber: number
@@ -121,8 +127,9 @@ function serializeFloorData(
     cells: Object.values(snapshot.paintedCells).map((r) => ({
       x: r.cell[0], z: r.cell[1], layerId: r.layerId, roomId: r.roomId,
     })),
+    exploredCells: Object.keys(snapshot.exploredCells),
     objects: Object.values(snapshot.placedObjects).map((obj) => ({
-      id: obj.id, assetId: obj.assetId, position: obj.position, rotation: obj.rotation,
+      id: obj.id, type: obj.type, assetId: obj.assetId, position: obj.position, rotation: obj.rotation,
       cell: obj.cell, cellKey: obj.cellKey, layerId: obj.layerId, props: obj.props,
     })),
     openings: Object.values(snapshot.wallOpenings).map((o) => ({
@@ -152,6 +159,7 @@ export function serializeDungeon(state: SerializableState): string {
       activeLayerId: state.activeLayerId,
       rooms: state.rooms,
       paintedCells: state.paintedCells,
+      exploredCells: state.exploredCells,
       placedObjects: state.placedObjects,
       wallOpenings: state.wallOpenings,
       nextRoomNumber: state.nextRoomNumber,
@@ -230,6 +238,52 @@ export function deserializeDungeon(json: string): SerializableState | null {
     }
   }
 
+  // v5 → v6: add object type, inferring player objects from their asset category
+  if (version < 6 && Array.isArray((raw as Record<string, unknown>).floors)) {
+    const r = raw as Record<string, unknown>
+    raw = {
+      ...r,
+      floors: (r.floors as unknown[]).map((floor) => {
+        if (!isObject(floor)) {
+          return floor
+        }
+
+        const objects = Array.isArray(floor.objects)
+          ? floor.objects.map((object) => {
+            if (!isObject(object) || typeof object.type === 'string') {
+              return object
+            }
+
+            const assetId = typeof object.assetId === 'string' ? object.assetId : null
+            const asset = assetId ? getContentPackAssetById(assetId) : null
+
+            return {
+              ...object,
+              type: asset?.category === 'player' ? 'player' : 'prop',
+            }
+          })
+          : floor.objects
+
+        return {
+          ...floor,
+          objects,
+        }
+      }),
+    }
+  }
+
+  if (version < 7 && Array.isArray((raw as Record<string, unknown>).floors)) {
+    const r = raw as Record<string, unknown>
+    raw = {
+      ...r,
+      floors: (r.floors as unknown[]).map((floor) =>
+        isObject(floor) && !Array.isArray(floor.exploredCells)
+          ? { ...floor, exploredCells: [] }
+          : floor,
+      ),
+    }
+  }
+
   return parseFile(raw as Record<string, unknown>)
 }
 
@@ -241,6 +295,7 @@ function parseFloorData(raw: Record<string, unknown>): {
   activeLayerId: string
   rooms: Record<string, Room>
   paintedCells: PaintedCells
+  exploredCells: Record<string, true>
   placedObjects: Record<string, DungeonObjectRecord>
   wallOpenings: Record<string, OpeningRecord>
   occupancy: Record<string, string>
@@ -298,6 +353,12 @@ function parseFloorData(raw: Record<string, unknown>): {
     paintedCells[getCellKey(cell)] = { cell, layerId, roomId }
   }
 
+  const exploredCells = Object.fromEntries(
+    (Array.isArray(raw.exploredCells) ? raw.exploredCells : [])
+      .filter((value): value is string => typeof value === 'string')
+      .map((cellKey) => [cellKey, true as const]),
+  )
+
   const placedObjects: Record<string, DungeonObjectRecord> = {}
   const occupancy: Record<string, string> = {}
   const objectsArr = Array.isArray(raw.objects) ? (raw.objects as unknown[]) : []
@@ -305,10 +366,12 @@ function parseFloorData(raw: Record<string, unknown>): {
     if (!isObject(o)) continue
     const id = requireString(o, 'id')
     const cellKey = requireString(o, 'cellKey')
+    const assetId = typeof o.assetId === 'string' ? o.assetId : null
+    const asset = assetId ? getContentPackAssetById(assetId) : null
     const obj: DungeonObjectRecord = {
       id,
-      type: 'prop',
-      assetId: typeof o.assetId === 'string' ? o.assetId : null,
+      type: o.type === 'player' || asset?.category === 'player' ? 'player' : 'prop',
+      assetId,
       position: parseTuple3(o.position) ?? [0, 0, 0],
       rotation: parseTuple3(o.rotation) ?? [0, 0, 0],
       cell: parseGridCell(o.cell) ?? [0, 0],
@@ -339,7 +402,7 @@ function parseFloorData(raw: Record<string, unknown>): {
 
   return {
     layers, layerOrder, activeLayerId, rooms,
-    paintedCells, placedObjects, wallOpenings, occupancy,
+    paintedCells, exploredCells, placedObjects, wallOpenings, occupancy,
     nextRoomNumber: typeof raw.nextRoomNumber === 'number' && raw.nextRoomNumber >= 1
       ? raw.nextRoomNumber : 1,
   }
@@ -378,7 +441,7 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
             wall: getDefaultAssetIdByCategory('wall'),
             prop: getDefaultAssetIdByCategory('prop'),
             opening: getDefaultAssetIdByCategory('opening'),
-            character: getDefaultAssetIdByCategory('character'),
+            player: getDefaultAssetIdByCategory('player'),
           },
           selection: null,
         },
@@ -405,7 +468,7 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
           wall: getDefaultAssetIdByCategory('wall'),
           prop: getDefaultAssetIdByCategory('prop'),
           opening: getDefaultAssetIdByCategory('opening'),
-          character: getDefaultAssetIdByCategory('character'),
+          player: getDefaultAssetIdByCategory('player'),
         }, selection: null },
         history: [], future: [],
       }
@@ -460,4 +523,3 @@ function parseGridCell(value: unknown): GridCell | null {
 
 // Suppress "unused import" — kept for completeness in registry-aware migrations
 void getDefaultAssetIdByCategory
-

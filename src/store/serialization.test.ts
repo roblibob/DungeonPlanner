@@ -8,13 +8,14 @@ import type { FloorRecord } from './useDungeonStore'
 function emptyFloorSnapshot() {
   return {
     tool: 'move' as const,
-    selectedAssetIds: { floor: null, wall: null, prop: null, opening: null, character: null },
+    selectedAssetIds: { floor: null, wall: null, prop: null, opening: null, player: null },
     selection: null,
     layers: { default: { id: 'default', name: 'Default', visible: true, locked: false } },
     layerOrder: ['default'],
     activeLayerId: 'default',
     rooms: {},
     paintedCells: {},
+    exploredCells: {},
     placedObjects: {},
     wallOpenings: {},
     occupancy: {},
@@ -73,6 +74,16 @@ describe('serializeDungeon / deserializeDungeon roundtrip', () => {
     expect(cells?.['2:3']).toMatchObject({ cell: [2, 3] })
   })
 
+  it('preserves explored cells', () => {
+    const state = baseState()
+    state.floors!['floor-1'].snapshot.exploredCells['2:3'] = true
+
+    const result = deserializeDungeon(serializeDungeon(state))
+    expect(result).not.toBeNull()
+    const exploredCells = result!.exploredCells ?? result!.floors?.['floor-1']?.snapshot?.exploredCells
+    expect(exploredCells?.['2:3']).toBe(true)
+  })
+
   it('preserves placed objects', () => {
     const state = baseState()
     state.floors!['floor-1'].snapshot.placedObjects['obj-1'] = {
@@ -91,6 +102,26 @@ describe('serializeDungeon / deserializeDungeon roundtrip', () => {
     expect(result).not.toBeNull()
     const objects = result!.placedObjects ?? result!.floors?.['floor-1']?.snapshot?.placedObjects
     expect(objects?.['obj-1']).toMatchObject({ assetId: 'core.props_wall_torch' })
+  })
+
+  it('preserves player objects', () => {
+    const state = baseState()
+    state.floors!['floor-1'].snapshot.placedObjects['obj-player'] = {
+      id: 'obj-player',
+      type: 'player',
+      assetId: 'core.player_barbarian',
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: {},
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+      layerId: 'default',
+    }
+
+    const result = deserializeDungeon(serializeDungeon(state))
+    expect(result).not.toBeNull()
+    const objects = result!.placedObjects ?? result!.floors?.['floor-1']?.snapshot?.placedObjects
+    expect(objects?.['obj-player']).toMatchObject({ assetId: 'core.player_barbarian', type: 'player' })
   })
 
   it('preserves wall openings with flipped flag', () => {

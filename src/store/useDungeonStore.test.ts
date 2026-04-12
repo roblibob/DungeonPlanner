@@ -45,6 +45,101 @@ describe('useDungeonStore history', () => {
     expect(state.placedObjects[placedId!]?.type).toBe('prop')
   })
 
+  it('places a player into a snapped cell and keeps its player type', () => {
+    const placedId = useDungeonStore.getState().placeObject({
+      type: 'player',
+      assetId: 'core.player_barbarian',
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: {},
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+    })
+
+    const state = useDungeonStore.getState()
+    expect(placedId).toBeTruthy()
+    expect(state.selection).toBe(placedId)
+    expect(state.occupancy['0:0:floor']).toBe(placedId)
+    expect(state.placedObjects[placedId!]?.type).toBe('player')
+  })
+
+  it('moves a player to another painted floor cell without changing its id', () => {
+    useDungeonStore.getState().paintCells([[0, 0], [1, 0]])
+
+    const placedId = useDungeonStore.getState().placeObject({
+      type: 'player',
+      assetId: 'core.player_barbarian',
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'FLOOR', direction: null },
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+    })
+
+    const moved = useDungeonStore.getState().moveObject(placedId!, {
+      position: [3, 0, 1],
+      cell: [1, 0],
+      cellKey: '1:0:floor',
+    })
+
+    const state = useDungeonStore.getState()
+    expect(moved).toBe(true)
+    expect(state.occupancy['0:0:floor']).toBeUndefined()
+    expect(state.occupancy['1:0:floor']).toBe(placedId)
+    expect(state.placedObjects[placedId!]?.cell).toEqual([1, 0])
+    expect(state.placedObjects[placedId!]?.position).toEqual([3, 0, 1])
+  })
+
+  it('does not move a player onto an occupied floor cell', () => {
+    useDungeonStore.getState().paintCells([[0, 0], [1, 0]])
+
+    const firstId = useDungeonStore.getState().placeObject({
+      type: 'player',
+      assetId: 'core.player_barbarian',
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'FLOOR', direction: null },
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+    })
+
+    const secondId = useDungeonStore.getState().placeObject({
+      type: 'player',
+      assetId: 'core.player_barbarian',
+      position: [3, 0, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'FLOOR', direction: null },
+      cell: [1, 0],
+      cellKey: '1:0:floor',
+    })
+
+    const moved = useDungeonStore.getState().moveObject(firstId!, {
+      position: [3, 0, 1],
+      cell: [1, 0],
+      cellKey: '1:0:floor',
+    })
+
+    const state = useDungeonStore.getState()
+    expect(moved).toBe(false)
+    expect(state.occupancy['0:0:floor']).toBe(firstId)
+    expect(state.occupancy['1:0:floor']).toBe(secondId)
+    expect(state.placedObjects[firstId!]?.cell).toEqual([0, 0])
+  })
+
+  it('clears explored cells without changing painted cells', () => {
+    const state = useDungeonStore.getState()
+    state.paintCells([[0, 0], [1, 0]])
+    state.mergeExploredCells(['0:0', '1:0'])
+
+    expect(Object.keys(useDungeonStore.getState().exploredCells)).toHaveLength(2)
+
+    useDungeonStore.getState().clearExploredCells()
+
+    const nextState = useDungeonStore.getState()
+    expect(nextState.exploredCells).toEqual({})
+    expect(Object.keys(nextState.paintedCells)).toHaveLength(2)
+  })
+
   it('replaces the existing prop in a cell and supports undo/redo', () => {
     useDungeonStore.getState().placeObject({
       type: 'prop',
@@ -172,6 +267,58 @@ describe('useDungeonStore history', () => {
     const state = useDungeonStore.getState()
     expect(state.occupancy['0:0:floor']).toBeUndefined()
     expect(state.placedObjects[propId!]).toBeUndefined()
+  })
+
+  it('rotates a selected floor object by 90 degrees', () => {
+    const placedId = useDungeonStore.getState().placeObject({
+      type: 'player',
+      assetId: 'core.player_barbarian',
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: {
+        connector: 'FLOOR',
+        direction: null,
+      },
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+    })
+
+    useDungeonStore.getState().rotateSelection()
+
+    expect(useDungeonStore.getState().placedObjects[placedId!]?.rotation).toEqual([0, Math.PI / 2, 0])
+  })
+
+  it('rotates a selected wall-attached prop by 180 degrees', () => {
+    const placedId = useDungeonStore.getState().placeObject({
+      type: 'prop',
+      assetId: 'core.props_wall_torch',
+      position: [1, 0, 2],
+      rotation: [0, 0, 0],
+      props: {
+        connector: 'WALL',
+        direction: 'north',
+      },
+      cell: [0, 0],
+      cellKey: '0:0:north',
+    })
+
+    useDungeonStore.getState().rotateSelection()
+
+    expect(useDungeonStore.getState().placedObjects[placedId!]?.rotation).toEqual([0, Math.PI, 0])
+  })
+
+  it('rotates a selected opening by toggling its flip flag', () => {
+    const openingId = useDungeonStore.getState().placeOpening({
+      assetId: 'core.opening_door_wall_1',
+      wallKey: '0:0:north',
+      width: 1,
+      flipped: false,
+    })
+
+    useDungeonStore.getState().selectObject(openingId)
+    useDungeonStore.getState().rotateSelection()
+
+    expect(useDungeonStore.getState().wallOpenings[openingId!]?.flipped).toBe(true)
   })
 })
 
@@ -426,4 +573,3 @@ describe('useDungeonStore newDungeon', () => {
     expect(state.dungeonName).toBe('My Dungeon')
   })
 })
-

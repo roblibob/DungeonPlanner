@@ -25,7 +25,6 @@ import {
 import { triggerBuild } from '../../store/buildAnimations'
 import { FloorGridOverlay } from './FloorGridOverlay'
 import { ContentPackInstance } from './ContentPackInstance'
-import { useIsDM } from '../../multiplayer/useMultiplayerStore'
 
 type GridProps = {
   size?: number
@@ -50,14 +49,13 @@ export function Grid({ size = 120 }: GridProps) {
   const showGrid = useDungeonStore((state) => state.showGrid)
   const selectedPropAssetId = useDungeonStore((state) => state.selectedAssetIds.prop)
   const selectedOpeningAssetId = useDungeonStore((state) => state.selectedAssetIds.opening)
+  const selection = useDungeonStore((state) => state.selection)
   const selectedPropAsset = selectedPropAssetId
     ? getContentPackAssetById(selectedPropAssetId)
     : null
   const selectedOpeningAsset = selectedOpeningAssetId
     ? getContentPackAssetById(selectedOpeningAssetId)
     : null
-  // Only DMs may mutate the map
-  const isDM = useIsDM()
   const [hoveredCell, setHoveredCell] = useState<SnappedGridPosition | null>(null)
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; z: number } | null>(null)
   const mousePosRef = useRef(new THREE.Vector2())
@@ -89,7 +87,7 @@ export function Grid({ size = 120 }: GridProps) {
     const isFloorOpening = tool === 'opening' &&
       (selectedOpeningAsset?.metadata?.connectsTo ?? 'FLOOR') === 'FLOOR'
     const isWallOpening = tool === 'opening' && !isFloorOpening
-    if (tool !== 'prop' && !isFloorOpening && !isWallOpening) return
+    if (selection || (tool !== 'prop' && !isFloorOpening && !isWallOpening)) return
     function onKeyDown(e: KeyboardEvent) {
       const active = document.activeElement
       if (
@@ -105,7 +103,7 @@ export function Grid({ size = 120 }: GridProps) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [tool, selectedOpeningAsset])
+  }, [tool, selectedOpeningAsset, selection])
 
   // Register non-passive handlers on the canvas so preventDefault() works for
   // context menu suppression and drag-selection prevention
@@ -154,7 +152,8 @@ export function Grid({ size = 120 }: GridProps) {
   }, [hoveredCell, paintedCells, strokeCurrentCell, strokeMode, strokeStartCell, tool])
 
   const commitStroke = useEffectEvent(() => {
-    if (tool !== 'room' || !isDM) {
+    if (tool !== 'room') {
+      updateStrokeState(null, null, null)
       return
     }
 
@@ -225,9 +224,6 @@ export function Grid({ size = 120 }: GridProps) {
     const snapped = snap(point)
     setHoveredCell(snapped)
     setHoveredPoint(point)
-
-    // Players cannot mutate map state
-    if (!isDM && tool !== 'select' && tool !== 'move') return
 
     if (tool === 'opening') {
       const isFloorOpening = (selectedOpeningAsset?.metadata?.connectsTo ?? 'FLOOR') === 'FLOOR'
@@ -305,8 +301,10 @@ export function Grid({ size = 120 }: GridProps) {
         return
       }
 
+      const objectType = selectedPropAsset?.category === 'player' ? 'player' : 'prop'
+
       placeObject({
-        type: 'prop',
+        type: objectType,
         assetId: selectedPropAssetId,
         position: propPlacement.position,
         rotation: propPlacement.rotation,
@@ -335,7 +333,7 @@ export function Grid({ size = 120 }: GridProps) {
     // preventDefault is handled by the non-passive canvas listener
   }
 
-  const isMoveTool = tool === 'move'
+  const isNavigationTool = tool === 'move' || tool === 'select'
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
   const isTopDown = activeCameraMode === 'top-down'
 
@@ -345,19 +343,19 @@ export function Grid({ size = 120 }: GridProps) {
 
   return (
     <group>
-      {/* Hit plane — always tracks cursor world pos; editing events only when not in move tool */}
+      {/* Hit plane — always tracks cursor world pos; editing events only for build/place tools */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        onPointerMove={isMoveTool ? updateCursorPosOnly : updateHoveredCell}
+        onPointerMove={isNavigationTool ? updateCursorPosOnly : updateHoveredCell}
         onPointerOut={() => {
           cursorActiveRef.current = false
-          if (!isMoveTool && !strokeModeRef.current) {
+          if (!isNavigationTool && !strokeModeRef.current) {
             setHoveredCell(null)
             setHoveredPoint(null)
           }
         }}
-        onPointerDown={isMoveTool ? undefined : handlePointerDown}
-        onContextMenu={isMoveTool ? undefined : handleContextMenu}
+        onPointerDown={isNavigationTool ? undefined : handlePointerDown}
+        onContextMenu={isNavigationTool ? undefined : handleContextMenu}
       >
         <planeGeometry args={[size, size]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -373,7 +371,7 @@ export function Grid({ size = 120 }: GridProps) {
         />
       )}
 
-      {!isMoveTool && (
+      {!isNavigationTool && (
         <HoverPreview
           hoveredCell={hoveredCell}
           hoveredPoint={hoveredPoint}

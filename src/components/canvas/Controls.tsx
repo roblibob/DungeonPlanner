@@ -1,11 +1,10 @@
 import { OrbitControls } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useDungeonStore } from '../../store/useDungeonStore'
-import { useMultiplayerStore, useIsDM } from '../../multiplayer/useMultiplayerStore'
-import type { EntitySnapshot } from '../../multiplayer/useMultiplayerStore'
-import { GRID_SIZE } from '../../hooks/useSnapToGrid'
+import { registerDebugCameraPoseReader, registerDebugWorldProjector } from './debugCameraBridge'
 
 const PAN_SPEED = 0.006
 const ROTATE_SPEED = 0.025
@@ -26,6 +25,7 @@ function KeyboardCameraControls() {
   const isPaintingStrokeActive = useDungeonStore(
     (state) => state.isPaintingStrokeActive,
   )
+  const isObjectDragActive = useDungeonStore((state) => state.isObjectDragActive)
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
 
   useEffect(() => {
@@ -54,7 +54,7 @@ function KeyboardCameraControls() {
   }, [])
 
   useFrame((state) => {
-    if (isPaintingStrokeActive) return
+    if (isPaintingStrokeActive || isObjectDragActive) return
     const keys = pressedKeys.current
     if (keys.size === 0) return
 
@@ -109,79 +109,67 @@ function KeyboardCameraControls() {
   return null
 }
 
-type PanLimits = { minX: number; maxX: number; minZ: number; maxZ: number } | null
-
-/** Derive pan limits from party PLAYER entity positions */
-function buildPanLimits(entities: Record<string, EntitySnapshot>, padding: number): PanLimits {
-  const players = Object.values(entities).filter((e) => e.type === 'PLAYER')
-  if (players.length === 0) return null
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
-  for (const e of players) {
-    minX = Math.min(minX, e.worldX); maxX = Math.max(maxX, e.worldX)
-    minZ = Math.min(minZ, e.worldZ); maxZ = Math.max(maxZ, e.worldZ)
-  }
-  return {
-    minX: minX - padding, maxX: maxX + padding,
-    minZ: minZ - padding, maxZ: maxZ + padding,
-  }
-}
-
-/** Clamps OrbitControls target to party bounding box each frame (players only). */
-function PlayerCameraClamp({ panLimits }: { panLimits: PanLimits }) {
-  useFrame((state) => {
-    if (!panLimits) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const controls = state.controls as any
-    if (!controls?.target) return
-    const t = controls.target as THREE.Vector3
-    const cx = Math.max(panLimits.minX, Math.min(panLimits.maxX, t.x))
-    const cz = Math.max(panLimits.minZ, Math.min(panLimits.maxZ, t.z))
-    if (cx !== t.x || cz !== t.z) {
-      const delta = new THREE.Vector3(cx - t.x, 0, cz - t.z)
-      t.set(cx, t.y, cz)
-      state.camera.position.add(delta)
-      controls.update()
-    }
-  })
-  return null
-}
-
 export function Controls() {
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const camera = useThree((state) => state.camera)
+  const gl = useThree((state) => state.gl)
   const cameraMode = useDungeonStore((state) => state.cameraMode)
   const isPaintingStrokeActive = useDungeonStore(
     (state) => state.isPaintingStrokeActive,
   )
+  const isObjectDragActive = useDungeonStore((state) => state.isObjectDragActive)
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
-  const isDM     = useIsDM()
-  const entities = useMultiplayerStore((s) => s.entities)
 
-  const PLAYER_PAN_PADDING = GRID_SIZE * 8
-  const panLimits = useMemo(
-    () => isDM ? null : buildPanLimits(entities, PLAYER_PAN_PADDING),
-    [isDM, entities, PLAYER_PAN_PADDING],
-  )
+  const isPerspective = activeCameraMode === 'perspective'
+  const isTopDown     = activeCameraMode === 'top-down'
 
-  // Player clients are locked to top-down view
-  const isPerspective = isDM && activeCameraMode === 'perspective'
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return
+    }
+
+    registerDebugCameraPoseReader(() => {
+      const target = controlsRef.current?.target ?? new THREE.Vector3()
+
+      return {
+        position: [camera.position.x, camera.position.y, camera.position.z] as const,
+        target: [target.x, target.y, target.z] as const,
+      }
+    })
+    registerDebugWorldProjector((point) => {
+      const vector = new THREE.Vector3(point[0], point[1], point[2]).project(camera)
+      const rect = gl.domElement.getBoundingClientRect()
+      return {
+        x: rect.left + ((vector.x + 1) * 0.5 * rect.width),
+        y: rect.top + ((1 - vector.y) * 0.5 * rect.height),
+      }
+    })
+
+    return () => {
+      registerDebugCameraPoseReader(null)
+      registerDebugWorldProjector(null)
+    }
+  }, [camera, gl])
 
   return (
     <>
       <OrbitControls
+        ref={controlsRef}
         makeDefault
-        enabled={(isDM ? cameraMode === 'orbit' : true) && !isPaintingStrokeActive}
+        enabled={cameraMode === 'orbit' && !isPaintingStrokeActive && !isObjectDragActive}
         enableRotate={isPerspective}
-        enablePan={isDM}
+        enablePan
         enableDamping
         dampingFactor={0.08}
-        {...(isPerspective
-          ? { minDistance: 5, maxDistance: isDM ? 48 : 32 }
-          : { minZoom: 0.15, maxZoom: isDM ? 8 : 4 }
+        // Distance constraints for perspective/iso; zoom constraints for ortho top-down
+        {...(isTopDown
+          ? { minZoom: 0.15, maxZoom: 8 }
+          : { minDistance: 5, maxDistance: 48 }
         )}
-        maxPolarAngle={isPerspective ? Math.PI / 2.05 : 0.001}
+        maxPolarAngle={isPerspective ? Math.PI / 2.05 : undefined}
         target={[0, 0, 0]}
       />
       <KeyboardCameraControls />
-      {!isDM && <PlayerCameraClamp panLimits={panLimits} />}
     </>
   )
 }

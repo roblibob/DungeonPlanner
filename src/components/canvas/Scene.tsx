@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { FpsMeterNode } from './FpsCounter'
@@ -10,9 +10,12 @@ import { CameraPresetManager } from './CameraPresetManager'
 import { DungeonObject } from './DungeonObject'
 import { DungeonRoom } from './DungeonRoom'
 import { WebGPUPostProcessing } from './WebGPUPostProcessing'
-import { EntityLayer } from './EntityLayer'
-import { FogOfWar } from './FogOfWar'
-import { useDungeonStore } from '../../store/useDungeonStore'
+import { useDungeonStore, type DungeonObjectRecord } from '../../store/useDungeonStore'
+import { usePlayVisibility } from './playVisibility'
+import { ContentPackInstance } from './ContentPackInstance'
+import { cellToWorldPosition, getCellKey, snapWorldPointToGrid, type GridCell } from '../../hooks/useSnapToGrid'
+import { PlayVisibilityMask } from './PlayVisibilityMask'
+import { PlayVisibilityDebugRays } from './PlayVisibilityDebugRays'
 
 async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
   const powerPreference =
@@ -117,6 +120,7 @@ export default Scene
 function GlobalContent() {
   const lightIntensity = useDungeonStore((state) => state.sceneLighting.intensity)
   const postProcessingEnabled = useDungeonStore((state) => state.postProcessing.enabled)
+  const tool = useDungeonStore((state) => state.tool)
 
   return (
     <>
@@ -143,7 +147,7 @@ function GlobalContent() {
         position={[-8, 7, -4]}
       />
 
-      <Grid />
+      {tool !== 'play' && <Grid />}
       <Controls />
       <FloorTransitionController />
       <CameraPresetManager />
@@ -157,7 +161,16 @@ function GlobalContent() {
 /** Dungeon room tiles and props — remounts on floor switch for clean state. */
 function FloorContent({ startY = 0 }: { startY?: number }) {
   const placedObjects = useDungeonStore((state) => state.placedObjects)
+  const paintedCells = useDungeonStore((state) => state.paintedCells)
+  const occupancy = useDungeonStore((state) => state.occupancy)
   const layers = useDungeonStore((state) => state.layers)
+  const tool = useDungeonStore((state) => state.tool)
+  const showLosDebugMask = useDungeonStore((state) => state.showLosDebugMask)
+  const showLosDebugRays = useDungeonStore((state) => state.showLosDebugRays)
+  const moveObject = useDungeonStore((state) => state.moveObject)
+  const selectObject = useDungeonStore((state) => state.selectObject)
+  const setObjectDragActive = useDungeonStore((state) => state.setObjectDragActive)
+  const visibility = usePlayVisibility()
 
   const objects = useMemo(
     () => Object.values(placedObjects).filter((obj) => layers[obj.layerId]?.visible !== false),
@@ -166,7 +179,9 @@ function FloorContent({ startY = 0 }: { startY?: number }) {
 
   const groupRef = useRef<THREE.Group>(null)
   const animYRef = useRef(startY)
-  const { invalidate } = useThree()
+  const dragStateRef = useRef<PlayDragState | null>(null)
+  const { camera, gl, invalidate } = useThree()
+  const [dragState, setDragState] = useState<PlayDragState | null>(null)
 
   useFrame((_, delta) => {
     if (Math.abs(animYRef.current) < 0.002) {
@@ -178,16 +193,160 @@ function FloorContent({ startY = 0 }: { startY?: number }) {
     invalidate()
   })
 
+  useEffect(() => {
+    dragStateRef.current = dragState
+  }, [dragState])
+
+  const stopDrag = useCallback(() => {
+    setDragState(null)
+    dragStateRef.current = null
+    setObjectDragActive(false)
+    invalidate()
+  }, [invalidate, setObjectDragActive])
+
+  const startDrag = useCallback((object: DungeonObjectRecord) => {
+    if (tool !== 'play' || object.type !== 'player') {
+      return
+    }
+
+    const position = cellToWorldPosition(object.cell)
+    const nextState: PlayDragState = {
+      objectId: object.id,
+      assetId: object.assetId,
+      rotation: object.rotation,
+      positionY: object.position[1],
+      cell: object.cell,
+      position: [position[0], object.position[1], position[2]],
+      valid: true,
+    }
+
+    selectObject(object.id)
+    setDragState(nextState)
+    dragStateRef.current = nextState
+    setObjectDragActive(true)
+    invalidate()
+  }, [invalidate, selectObject, setObjectDragActive, tool])
+
+  useEffect(() => {
+    if (!dragState) {
+      return
+    }
+
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const raycaster = new THREE.Raycaster()
+    const ndc = new THREE.Vector2()
+    const point = new THREE.Vector3()
+
+    function updateDrag(clientX: number, clientY: number) {
+      const rect = gl.domElement.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) {
+        return
+      }
+
+      ndc.set(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      )
+
+      raycaster.setFromCamera(ndc, camera)
+      if (!raycaster.ray.intersectPlane(plane, point)) {
+        return
+      }
+
+      const snapped = snapWorldPointToGrid(point)
+      const targetKey = getCellKey(snapped.cell)
+      const anchorKey = `${targetKey}:floor`
+      const occupantId = occupancy[anchorKey]
+      const valid = Boolean(paintedCells[targetKey]) && (!occupantId || occupantId === dragStateRef.current?.objectId)
+      const targetPosition = cellToWorldPosition(snapped.cell)
+
+      setDragState((current) => current
+        ? {
+            ...current,
+            cell: snapped.cell,
+            position: [targetPosition[0], current.positionY, targetPosition[2]],
+            valid,
+          }
+        : current)
+      invalidate()
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      updateDrag(event.clientX, event.clientY)
+    }
+
+    function handlePointerUp() {
+      const current = dragStateRef.current
+      if (current?.valid) {
+        moveObject(current.objectId, {
+          position: current.position,
+          cell: current.cell,
+          cellKey: `${getCellKey(current.cell)}:floor`,
+        })
+      }
+      stopDrag()
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp, { once: true })
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [camera, dragState, gl, invalidate, moveObject, occupancy, paintedCells, stopDrag])
+
+  useEffect(() => {
+    if (tool === 'play') {
+      return
+    }
+
+    stopDrag()
+  }, [stopDrag, tool])
+
   return (
     <group ref={groupRef} position={[0, startY, 0]}>
-      <DungeonRoom />
+      <DungeonRoom visibility={visibility} />
+      {visibility.active && visibility.mask && (
+        <>
+          <PlayVisibilityMask mask={visibility.mask} />
+          {showLosDebugMask && <PlayVisibilityMask mask={visibility.mask} mode="debug" />}
+          {showLosDebugRays && <PlayVisibilityDebugRays mask={visibility.mask} />}
+        </>
+      )}
       {objects.map((object) => (
-        <DungeonObject key={object.id} object={object} />
+        dragState?.objectId === object.id ? null : (
+          <DungeonObject
+            key={object.id}
+            object={object}
+            visibility={visibility}
+            onPlayDragStart={startDrag}
+          />
+        )
       ))}
-      <FogOfWar />
-      <EntityLayer />
+      {dragState && (
+        <group position={dragState.position} rotation={dragState.rotation}>
+          <ContentPackInstance
+            assetId={dragState.assetId}
+            selected
+            tint={dragState.valid ? '#22c55e' : '#ef4444'}
+            variant="prop"
+            visibility="visible"
+          />
+        </group>
+      )}
     </group>
   )
+}
+
+type PlayDragState = {
+  objectId: string
+  assetId: string | null
+  rotation: [number, number, number]
+  positionY: number
+  cell: GridCell
+  position: [number, number, number]
+  valid: boolean
 }
 
 /**
