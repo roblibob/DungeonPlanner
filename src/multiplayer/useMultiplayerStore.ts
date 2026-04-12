@@ -26,7 +26,7 @@ type MultiplayerState = {
   discoveredCells: Set<string>
 
   /** Config used when placing the next token by clicking the canvas */
-  pendingToken: { name: string; type: 'PLAYER' | 'NPC'; movementRange: number }
+  pendingToken: { name: string; type: 'PLAYER' | 'NPC'; movementRange: number; assetId: string }
 
   setRole:          (role: ClientRole) => void
   setConnected:     (connected: boolean) => void
@@ -93,7 +93,7 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
   room:      null,
   entities:  {},
   discoveredCells: new Set<string>(),
-  pendingToken: { name: 'Token', type: 'PLAYER', movementRange: 10 },
+  pendingToken: { name: 'Token', type: 'PLAYER', movementRange: 10, assetId: 'core.character_humanoid' },
 
   setRole:      (role) => set({ role }),
   setConnected: (connected) => set({ connected }),
@@ -130,7 +130,7 @@ export const useMultiplayerStore = create<MultiplayerState>((set, get) => ({
       worldX:           (cellX + 0.5) * GRID_SIZE,
       worldZ:           (cellZ + 0.5) * GRID_SIZE,
       movementRange:    pendingToken.movementRange,
-      assetId:          '',
+      assetId:          pendingToken.assetId || 'core.character_humanoid',
       name:             pendingToken.name,
       visibleToPlayers: true,
     }

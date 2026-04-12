@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react'
 import type { JSX } from 'react'
 
-export type ContentPackCategory = 'floor' | 'wall' | 'prop' | 'opening'
+export type ContentPackCategory = 'floor' | 'wall' | 'prop' | 'opening' | 'character'
 export type ContentPackComponentProps = JSX.IntrinsicElements['group'] & {
   variantKey?: string
 }

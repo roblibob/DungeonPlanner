@@ -2,6 +2,11 @@ import { useMultiplayerStore, useIsDM } from '../../multiplayer/useMultiplayerSt
 
 const DEFAULT_MOVEMENT_RANGE = 10
 
+const CHARACTER_OPTIONS = [
+  { id: 'core.character_humanoid', label: 'Humanoid', emoji: '🧙' },
+  { id: 'core.character_monster',  label: 'Monster',  emoji: '👹' },
+] as const
+
 export function TokenToolPanel() {
   const isDM          = useIsDM()
   const entities      = useMultiplayerStore((s) => s.entities)
@@ -14,7 +19,6 @@ export function TokenToolPanel() {
     if (room) {
       room.send('removeToken', { entityId: id })
     } else {
-      // Offline: remove locally
       removeEntity(id)
     }
   }
@@ -51,12 +55,17 @@ export function TokenToolPanel() {
               placeholder="Token name"
               className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-amber-400/40"
             />
+
+            {/* Type */}
             <div className="flex gap-2">
               {(['PLAYER', 'NPC'] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setPending({ type: t })}
+                  onClick={() => {
+                    const defaultAsset = t === 'PLAYER' ? 'core.character_humanoid' : 'core.character_monster'
+                    setPending({ type: t, assetId: defaultAsset })
+                  }}
                   className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition ${
                     pendingToken.type === t
                       ? t === 'PLAYER'
@@ -66,6 +75,25 @@ export function TokenToolPanel() {
                   }`}
                 >
                   {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Model picker */}
+            <div className="flex gap-2">
+              {CHARACTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setPending({ assetId: opt.id })}
+                  title={opt.label}
+                  className={`flex-1 rounded-xl border px-2 py-1.5 text-xs transition ${
+                    pendingToken.assetId === opt.id
+                      ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+                      : 'border-stone-700 text-stone-500 hover:border-stone-600 hover:text-stone-300'
+                  }`}
+                >
+                  {opt.emoji} {opt.label}
                 </button>
               ))}
             </div>
@@ -132,9 +160,7 @@ export function TokenToolPanel() {
                   <span>·</span>
                   <span>Range {e.movementRange}</span>
                   <span>·</span>
-                  <span>
-                    {e.cellX},{e.cellZ}
-                  </span>
+                  <span>{e.cellX},{e.cellZ}</span>
                   {!e.visibleToPlayers && (
                     <>
                       <span>·</span>
@@ -183,6 +209,4 @@ export function TokenToolPanel() {
   )
 }
 
-// Exported for use by the canvas placement handler
 export { DEFAULT_MOVEMENT_RANGE }
-export type { }

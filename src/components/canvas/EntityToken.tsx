@@ -5,11 +5,16 @@ import { Text } from '@react-three/drei'
 import type { EntitySnapshot } from '../../multiplayer/useMultiplayerStore'
 import { useIsDM } from '../../multiplayer/useMultiplayerStore'
 import { GRID_SIZE } from '../../hooks/useSnapToGrid'
+import { getContentPackAssetById } from '../../content-packs/registry'
+import { characterHumanoidAsset } from '../../content-packs/core/characters/HumanoidBase'
 
 const PLAYER_COLOR = new THREE.Color('#38bdf8')  // sky-400
 const NPC_COLOR    = new THREE.Color('#f87171')  // rose-400
 const NPC_HIDDEN_COLOR = new THREE.Color('#555555')
 const SELECT_COLOR = new THREE.Color('#fbbf24')  // amber-400
+
+// Fallback asset when entity.assetId is missing or unknown
+const FALLBACK_ASSET = characterHumanoidAsset
 
 type Props = {
   entity: EntitySnapshot
@@ -21,11 +26,8 @@ type Props = {
 
 export function EntityToken({ entity, selected, isDragging = false, onClick, onPointerDown }: Props) {
   const isDM = useIsDM()
-  const groupRef  = useRef<THREE.Group>(null)
-  const ringRef   = useRef<THREE.Mesh>(null)
-  // troika-three-text (drei <Text>) creates geometry with drawRange.count=Infinity
-  // on first mount before async text layout runs. WebGPU rejects non-finite draw
-  // counts. Gate visibility via onSync so the mesh only renders once layout is done.
+  const groupRef = useRef<THREE.Group>(null)
+  const ringRef  = useRef<THREE.Mesh>(null)
   const [labelReady, setLabelReady] = useState(false)
 
   // Current rendered world position (smoothly lerped)
@@ -49,43 +51,38 @@ export function EntityToken({ entity, selected, isDragging = false, onClick, onP
   const opacity = !entity.visibleToPlayers && !isDM ? 0 : 1
   if (opacity === 0) return null
 
+  const asset = (entity.assetId ? getContentPackAssetById(entity.assetId) : null) ?? FALLBACK_ASSET
+  const ModelComponent = asset.Component
+
   return (
     <group ref={groupRef} position={[entity.worldX, 0, entity.worldZ]} scale={isDragging ? 1.2 : 1}>
-      {/* Base disc */}
-      <mesh
-        position={[0, 0.12, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        onClick={onClick}
-        onPointerDown={onPointerDown}
-      >
-        <circleGeometry args={[GRID_SIZE * 0.38, 32]} />
-        <meshStandardMaterial
-          color={color}
-          opacity={entity.visibleToPlayers || isDM ? 0.82 : 0.28}
-          transparent
-          roughness={0.4}
-        />
-      </mesh>
-
-      {/* Thin ring outline */}
+      {/* Coloured ring on the base — type / selection indicator */}
       <mesh
         ref={ringRef}
-        position={[0, 0.13, 0]}
+        position={[0, 0.01, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
       >
-        <ringGeometry args={[GRID_SIZE * 0.36, GRID_SIZE * 0.42, 32]} />
+        <ringGeometry args={[GRID_SIZE * 0.18, GRID_SIZE * 0.22, 48]} />
         <meshStandardMaterial
-          color={selected ? SELECT_COLOR : color}
-          emissive={selected ? SELECT_COLOR : color}
-          emissiveIntensity={selected ? 0.8 : 0.15}
+          color={color}
+          emissive={color}
+          emissiveIntensity={selected ? 1.2 : 0.4}
           opacity={entity.visibleToPlayers || isDM ? 1 : 0.28}
           transparent
         />
       </mesh>
 
+      {/* Character model — click / drag target */}
+      <group
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+      >
+        <ModelComponent />
+      </group>
+
       {/* Name label – visible only after troika text geometry is first computed */}
       <Text
-        position={[0, 0.55, 0]}
+        position={[0, 1.15, 0]}
         fontSize={0.28}
         color={entity.visibleToPlayers || isDM ? '#e7e5e4' : '#555'}
         anchorX="center"

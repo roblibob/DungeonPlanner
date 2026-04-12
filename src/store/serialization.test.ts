@@ -8,7 +8,7 @@ import type { FloorRecord } from './useDungeonStore'
 function emptyFloorSnapshot() {
   return {
     tool: 'move' as const,
-    selectedAssetIds: { floor: null, wall: null, prop: null, opening: null },
+    selectedAssetIds: { floor: null, wall: null, prop: null, opening: null, character: null },
     selection: null,
     layers: { default: { id: 'default', name: 'Default', visible: true, locked: false } },
     layerOrder: ['default'],

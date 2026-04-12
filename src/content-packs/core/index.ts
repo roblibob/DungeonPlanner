@@ -9,6 +9,8 @@ import { propsPillarAsset } from './props/Pillar'
 import { propsPillarWallAsset } from './props/PillarWall'
 import { openingDoorWall1Asset } from './openings/DoorWall1'
 import { openingDoorWall3Asset } from './openings/DoorWall3'
+import { characterHumanoidAsset } from './characters/HumanoidBase'
+import { characterMonsterAsset } from './characters/MonsterBase'
 
 export const coreContentPack: ContentPack = {
   id: 'core',
@@ -24,5 +26,7 @@ export const coreContentPack: ContentPack = {
     propsPillarWallAsset,
     openingDoorWall1Asset,
     openingDoorWall3Asset,
+    characterHumanoidAsset,
+    characterMonsterAsset,
   ],
 }

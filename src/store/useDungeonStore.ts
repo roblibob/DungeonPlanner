@@ -235,6 +235,7 @@ function createEmptySnapshot(): DungeonSnapshot {
       wall: getDefaultAssetIdByCategory('wall'),
       prop: getDefaultAssetIdByCategory('prop'),
       opening: getDefaultAssetIdByCategory('opening'),
+      character: getDefaultAssetIdByCategory('character'),
     },
     selection: null,
     layers: { [DEFAULT_LAYER_ID]: defaultLayer },

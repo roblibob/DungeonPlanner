@@ -378,6 +378,7 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
             wall: getDefaultAssetIdByCategory('wall'),
             prop: getDefaultAssetIdByCategory('prop'),
             opening: getDefaultAssetIdByCategory('opening'),
+            character: getDefaultAssetIdByCategory('character'),
           },
           selection: null,
         },
@@ -404,6 +405,7 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
           wall: getDefaultAssetIdByCategory('wall'),
           prop: getDefaultAssetIdByCategory('prop'),
           opening: getDefaultAssetIdByCategory('opening'),
+          character: getDefaultAssetIdByCategory('character'),
         }, selection: null },
         history: [], future: [],
       }
