@@ -14,10 +14,12 @@ const SELECT_COLOR = new THREE.Color('#fbbf24')  // amber-400
 type Props = {
   entity: EntitySnapshot
   selected: boolean
+  isDragging?: boolean
   onClick: (e: ThreeEvent<MouseEvent>) => void
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void
 }
 
-export function EntityToken({ entity, selected, onClick }: Props) {
+export function EntityToken({ entity, selected, isDragging = false, onClick, onPointerDown }: Props) {
   const isDM = useIsDM()
   const groupRef  = useRef<THREE.Group>(null)
   const ringRef   = useRef<THREE.Mesh>(null)
@@ -44,12 +46,13 @@ export function EntityToken({ entity, selected, onClick }: Props) {
   if (opacity === 0) return null
 
   return (
-    <group ref={groupRef} position={[entity.worldX, 0, entity.worldZ]}>
+    <group ref={groupRef} position={[entity.worldX, 0, entity.worldZ]} scale={isDragging ? 1.2 : 1}>
       {/* Base disc */}
       <mesh
         position={[0, 0.12, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         onClick={onClick}
+        onPointerDown={onPointerDown}
       >
         <circleGeometry args={[GRID_SIZE * 0.38, 32]} />
         <meshStandardMaterial

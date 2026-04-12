@@ -6,6 +6,7 @@ import { ContentPackInstance } from './ContentPackInstance'
 import { getContentPackAssetById } from '../../content-packs/registry'
 import type { PropLight } from '../../content-packs/types'
 import { registerObject, unregisterObject } from './objectRegistry'
+import { useIsDM } from '../../multiplayer/useMultiplayerStore'
 
 type DungeonObjectProps = { object: DungeonObjectRecord }
 
@@ -15,6 +16,7 @@ export const DungeonObject = memo(function DungeonObject({ object }: DungeonObje
   const removeObject = useDungeonStore((state) => state.removeObject)
   const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const tool = useDungeonStore((state) => state.tool)
+  const isDM = useIsDM()
   const selected = selection === object.id
 
   const groupRef = useRef<Group>(null)
@@ -38,6 +40,7 @@ export const DungeonObject = memo(function DungeonObject({ object }: DungeonObje
   }
 
   function handleContextMenu(event: ThreeEvent<PointerEvent>) {
+    if (!isDM) return
     event.stopPropagation()
     event.nativeEvent.preventDefault()
     removeObject(object.id)

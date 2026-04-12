@@ -20,27 +20,44 @@ const STEP_Y = 0.08 // slightly above floor
 type Props = {
   entity: EntitySnapshot
   hoverCell: GridCell
+  /** When true (DM drag), renders a simple ghost disc instead of BFS path */
+  instantMove?: boolean
 }
 
-export function PathPreview({ entity, hoverCell }: Props) {
+export function PathPreview({ entity, hoverCell, instantMove = false }: Props) {
   const paintedCells = useDungeonStore((s) => s.paintedCells)
 
   const { path, inRange } = useMemo(() => {
+    if (instantMove) return { path: null, inRange: true }
     const walkable = buildWalkableSet(Object.keys(paintedCells))
     const from: GridCell = [entity.cellX, entity.cellZ]
     const path = bfsPath(from, hoverCell, walkable, entity.movementRange + 4)
     const steps = path ? path.length - 1 : Infinity
     const inRange = steps <= entity.movementRange
     return { path, inRange }
-  }, [paintedCells, entity.cellX, entity.cellZ, hoverCell, entity.movementRange])
+  }, [paintedCells, entity.cellX, entity.cellZ, hoverCell, entity.movementRange, instantMove])
+
+  const targetWorld = cellToWorldPosition(hoverCell)
+
+  // DM instant-move: just show a ghost disc at target
+  if (instantMove) {
+    return (
+      <group>
+        <mesh
+          position={[targetWorld[0], STEP_Y, targetWorld[2]]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <circleGeometry args={[GRID_SIZE * 0.44, 24]} />
+          <meshBasicMaterial color="#fbbf24" transparent opacity={0.5} depthWrite={false} />
+        </mesh>
+      </group>
+    )
+  }
 
   if (!path || path.length <= 1) return null
 
   const color = inRange ? IN_RANGE_COLOR : OUT_RANGE_COLOR
   const steps = path.length - 1
-
-  // World position of hover cell for the label
-  const targetWorld = cellToWorldPosition(hoverCell)
 
   return (
     <group>

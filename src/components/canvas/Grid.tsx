@@ -25,6 +25,7 @@ import {
 import { triggerBuild } from '../../store/buildAnimations'
 import { FloorGridOverlay } from './FloorGridOverlay'
 import { ContentPackInstance } from './ContentPackInstance'
+import { useIsDM } from '../../multiplayer/useMultiplayerStore'
 
 type GridProps = {
   size?: number
@@ -55,6 +56,8 @@ export function Grid({ size = 120 }: GridProps) {
   const selectedOpeningAsset = selectedOpeningAssetId
     ? getContentPackAssetById(selectedOpeningAssetId)
     : null
+  // Only DMs may mutate the map
+  const isDM = useIsDM()
   const [hoveredCell, setHoveredCell] = useState<SnappedGridPosition | null>(null)
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; z: number } | null>(null)
   const mousePosRef = useRef(new THREE.Vector2())
@@ -151,7 +154,7 @@ export function Grid({ size = 120 }: GridProps) {
   }, [hoveredCell, paintedCells, strokeCurrentCell, strokeMode, strokeStartCell, tool])
 
   const commitStroke = useEffectEvent(() => {
-    if (tool !== 'room') {
+    if (tool !== 'room' || !isDM) {
       return
     }
 
@@ -222,6 +225,9 @@ export function Grid({ size = 120 }: GridProps) {
     const snapped = snap(point)
     setHoveredCell(snapped)
     setHoveredPoint(point)
+
+    // Players cannot mutate map state
+    if (!isDM && tool !== 'select' && tool !== 'move') return
 
     if (tool === 'opening') {
       const isFloorOpening = (selectedOpeningAsset?.metadata?.connectsTo ?? 'FLOOR') === 'FLOOR'

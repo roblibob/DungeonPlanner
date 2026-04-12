@@ -13,6 +13,7 @@ import { ScenePanel } from './components/editor/ScenePanel'
 import { useDungeonStore } from './store/useDungeonStore'
 import { MultiplayerProvider } from './multiplayer/MultiplayerProvider'
 import { useDungeonSync } from './multiplayer/useDungeonSync'
+import { useIsDM } from './multiplayer/useMultiplayerStore'
 import {
   cellToWorldPosition,
   getCellKey,
@@ -73,6 +74,7 @@ function App() {
 
   // DM sync: broadcast dungeon changes to connected players
   useDungeonSync()
+  const isDM = useIsDM()
 
   const onWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
     // Don't fire any scene hotkeys while the user is typing in a text field
@@ -92,6 +94,7 @@ function App() {
     }
 
     if (
+      isDM &&
       (event.key === 'Delete' || event.key === 'Backspace') &&
       state.selection
     ) {
@@ -100,7 +103,7 @@ function App() {
       return
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+    if (isDM && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault()
 
       if (event.shiftKey) {
@@ -112,7 +115,7 @@ function App() {
       return
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
+    if (isDM && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
       event.preventDefault()
       state.redo()
     }
