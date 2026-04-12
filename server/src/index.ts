@@ -1,0 +1,64 @@
+import express from 'express'
+import { createServer } from 'http'
+import { Server } from 'colyseus'
+import { WebSocketTransport } from '@colyseus/ws-transport'
+import { networkInterfaces } from 'os'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { DungeonRoom } from './rooms/DungeonRoom.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const PORT = Number(process.env.PORT) || 2567
+
+// ── Express app ───────────────────────────────────────────────────────────────
+const app = express()
+app.use(express.json({ limit: '10mb' }))
+
+// Serve the built frontend from ../dist (relative to this file at build time,
+// or ../../dist relative to src/ at dev time)
+const distPath = path.resolve(__dirname, '..', '..', 'dist')
+app.use(express.static(distPath))
+
+// Fallback: serve index.html for client-side routing
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'))
+})
+
+// ── HTTP + Colyseus server ────────────────────────────────────────────────────
+const httpServer = createServer(app)
+
+const gameServer = new Server({
+  transport: new WebSocketTransport({ server: httpServer }),
+})
+
+gameServer.define('dungeon', DungeonRoom)
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+gameServer.listen(PORT).then(() => {
+  const lanIp = getLanIp()
+
+  console.log('')
+  console.log('  ╔══════════════════════════════════════╗')
+  console.log('  ║      DungeonPlanner — Server         ║')
+  console.log('  ╠══════════════════════════════════════╣')
+  console.log(`  ║  DM (you):  http://localhost:${PORT}   ║`)
+  console.log(`  ║  Players:   http://${lanIp}:${PORT}  ║`)
+  console.log('  ╚══════════════════════════════════════╝')
+  console.log('')
+  console.log('  Share the Players URL with your group.')
+  console.log('  Press Ctrl+C to stop the server.')
+  console.log('')
+})
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getLanIp(): string {
+  const nets = networkInterfaces()
+  for (const ifaces of Object.values(nets)) {
+    for (const iface of ifaces ?? []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address
+      }
+    }
+  }
+  return 'localhost      '
+}

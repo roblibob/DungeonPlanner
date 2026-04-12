@@ -10,6 +10,7 @@ import { CameraPresetManager } from './CameraPresetManager'
 import { DungeonObject } from './DungeonObject'
 import { DungeonRoom } from './DungeonRoom'
 import { WebGPUPostProcessing } from './WebGPUPostProcessing'
+import { EntityLayer } from './EntityLayer'
 import { useDungeonStore } from '../../store/useDungeonStore'
 
 async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
@@ -182,6 +183,7 @@ function FloorContent({ startY = 0 }: { startY?: number }) {
       {objects.map((object) => (
         <DungeonObject key={object.id} object={object} />
       ))}
+      <EntityLayer />
     </group>
   )
 }

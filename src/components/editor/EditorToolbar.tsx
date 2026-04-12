@@ -11,14 +11,17 @@ import {
   Undo2,
   Upload,
   Video,
+  Users,
 } from 'lucide-react'
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
+import { useIsDM } from '../../multiplayer/useMultiplayerStore'
 
-const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; label: string }[] = [
+const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; label: string; dmOnly?: boolean }[] = [
   { id: 'select',  Icon: MousePointer2, label: 'Select' },
-  { id: 'room',    Icon: Blocks,        label: 'Room' },
-  { id: 'prop',    Icon: Box,           label: 'Prop' },
-  { id: 'opening', Icon: DoorOpen,      label: 'Opening' },
+  { id: 'room',    Icon: Blocks,        label: 'Room',    dmOnly: true },
+  { id: 'prop',    Icon: Box,           label: 'Prop',    dmOnly: true },
+  { id: 'opening', Icon: DoorOpen,      label: 'Opening', dmOnly: true },
+  { id: 'token',   Icon: Users,         label: 'Token' },
   { id: 'move',    Icon: Video,         label: 'Camera' },
 ]
 
@@ -29,6 +32,10 @@ export function EditorToolbar() {
   const redo = useDungeonStore((state) => state.redo)
   const historyLength = useDungeonStore((state) => state.history.length)
   const futureLength = useDungeonStore((state) => state.future.length)
+  const isDM = useIsDM()
+
+  // Filter DM-only tools for player clients
+  const visibleTools = TOOLS.filter((t) => !t.dmOnly || isDM)
 
   return (
     <div className="flex h-full flex-col items-center justify-between border-r border-stone-800/80 bg-stone-950/90 py-4 backdrop-blur">
@@ -40,7 +47,7 @@ export function EditorToolbar() {
 
         {/* Tool icons */}
         <div className="flex flex-col items-center gap-1">
-          {TOOLS.map(({ id, Icon, label }) => {
+          {visibleTools.map(({ id, Icon, label }) => {
             const active = tool === id
             return (
               <button
