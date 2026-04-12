@@ -47,10 +47,17 @@ export function MultiplayerProvider({ children }: { children: ReactNode }) {
         setRoom(room, room.sessionId)
 
         // ── Initial entity sync ──────────────────────────────────────────
+        // room.state.entities may not be hydrated yet on first join;
+        // onAdd listeners below will fill in entities as patches arrive.
         const snapshot: Record<string, ReturnType<typeof entityToSnapshot>> = {}
-        room.state.entities.forEach((e: Entity, id: string) => {
-          snapshot[id] = entityToSnapshot(e)
-        })
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(room.state.entities as any)?.forEach?.((e: Entity, id: string) => {
+            snapshot[id] = entityToSnapshot(e)
+          })
+        } catch {
+          // State not yet hydrated — ignore, onAdd will populate entities
+        }
         setEntities(snapshot)
 
         // ── Entity change listeners ──────────────────────────────────────
