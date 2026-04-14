@@ -45,10 +45,12 @@ function TintOverlay({
   source,
   color,
   opacity = 0.42,
+  refreshKey,
 }: {
   source: THREE.Object3D
   color: string
   opacity?: number
+  refreshKey?: string
 }) {
   const overlay = useMemo(() => {
     const mat = new THREE.MeshBasicMaterial({
@@ -59,7 +61,10 @@ function TintOverlay({
       side: THREE.FrontSide,
     })
     const clone = SkeletonUtils.clone(source)
+    clone.name = refreshKey ? `tint-overlay:${refreshKey}` : 'tint-overlay'
+    clone.visible = true
     clone.traverse((obj) => {
+      obj.visible = true
       if (obj instanceof THREE.Mesh) {
         obj.material = mat
         obj.renderOrder = 1
@@ -68,7 +73,7 @@ function TintOverlay({
     markIgnoreLosRaycast(clone)
     disableRaycast(clone)
     return clone
-  }, [source, color, opacity])
+  }, [source, color, opacity, refreshKey])
 
   return <primitive object={overlay} />
 }
@@ -77,6 +82,8 @@ type ContentPackInstanceProps = ThreeElements['group'] & {
   assetId: string | null
   selected?: boolean
   tint?: string
+  tintOpacity?: number
+  overlayOnly?: boolean
   visibility?: PlayVisibilityState
   variant: ContentPackInstanceVariant
   variantKey?: string
@@ -87,6 +94,8 @@ export function ContentPackInstance({
   assetId,
   selected = false,
   tint,
+  tintOpacity,
+  overlayOnly = false,
   visibility = 'visible',
   variant,
   variantKey,
@@ -112,6 +121,8 @@ export function ContentPackInstance({
           variant={variant}
           receiveShadow={receiveShadow}
           tint={tint}
+          tintOpacity={tintOpacity}
+          overlayOnly={overlayOnly}
           visibility={visibility}
         />
       </group>
@@ -127,6 +138,8 @@ export function ContentPackInstance({
             variant={variant}
             receiveShadow={receiveShadow}
             tint={tint}
+            tintOpacity={tintOpacity}
+            overlayOnly={overlayOnly}
             visibility={visibility}
           />
         </group>
@@ -139,6 +152,8 @@ export function ContentPackInstance({
           receiveShadow={receiveShadow}
           selected={selected}
           tint={tint}
+          tintOpacity={tintOpacity}
+          overlayOnly={overlayOnly}
           visibility={visibility}
           {...groupProps}
         />
@@ -148,7 +163,10 @@ export function ContentPackInstance({
           receiveShadow={receiveShadow}
           selected={selected}
           tint={tint}
+          tintOpacity={tintOpacity}
+          overlayOnly={overlayOnly}
           visibility={visibility}
+          variantKey={variantKey}
           {...groupProps}
         />
       )}
@@ -171,14 +189,20 @@ function GLTFModel({
   receiveShadow,
   selected,
   tint,
+  tintOpacity,
+  overlayOnly,
   visibility,
+  variantKey,
   ...groupProps
 }: ThreeElements['group'] & {
   assetPath: string
   receiveShadow: boolean
   selected?: boolean
   tint?: string
+  tintOpacity?: number
+  overlayOnly?: boolean
   visibility?: PlayVisibilityState
+  variantKey?: string
 }) {
   const gltf = useGLTF(assetPath)
   const scene = useMemo(() => {
@@ -194,10 +218,17 @@ function GLTFModel({
 
   return (
     <group {...groupProps}>
-      <primitive object={scene} />
-      {selected && <SelectionOutline source={scene} />}
-      {tint && <TintOverlay source={scene} color={tint} />}
-      {visibility !== 'visible' && (
+      {!overlayOnly && <primitive object={scene} />}
+      {!overlayOnly && selected && <SelectionOutline source={scene} />}
+      {tint && (
+        <TintOverlay
+          source={scene}
+          color={tint}
+          opacity={tintOpacity}
+          refreshKey={variantKey ?? assetPath}
+        />
+      )}
+      {!overlayOnly && visibility !== 'visible' && (
         <TintOverlay
           source={scene}
           color="#050609"
@@ -214,6 +245,8 @@ function ComponentAsset({
   receiveShadow,
   selected,
   tint,
+  tintOpacity,
+  overlayOnly,
   visibility,
   ...groupProps
 }: ThreeElements['group'] & {
@@ -222,6 +255,8 @@ function ComponentAsset({
   receiveShadow: boolean
   selected?: boolean
   tint?: string
+  tintOpacity?: number
+  overlayOnly?: boolean
   visibility?: PlayVisibilityState
 }) {
   const contentRef = useRef<THREE.Group>(null)
@@ -244,12 +279,19 @@ function ComponentAsset({
 
   return (
     <group {...groupProps}>
-      <group ref={contentRef}>
+      <group ref={contentRef} visible={!overlayOnly}>
         <Component {...componentProps} />
       </group>
-      {selected && overlaySource && <SelectionOutline source={overlaySource} />}
-      {tint && overlaySource && <TintOverlay source={overlaySource} color={tint} />}
-      {visibility !== 'visible' && overlaySource && (
+      {!overlayOnly && selected && overlaySource && <SelectionOutline source={overlaySource} />}
+      {tint && overlaySource && (
+        <TintOverlay
+          source={overlaySource}
+          color={tint}
+          opacity={tintOpacity}
+          refreshKey={componentProps.variantKey}
+        />
+      )}
+      {!overlayOnly && visibility !== 'visible' && overlaySource && (
         <TintOverlay
           source={overlaySource}
           color="#050609"
@@ -277,12 +319,16 @@ function markIgnoreLosRaycast(object: THREE.Object3D) {
 function FallbackMesh({
   selected,
   tint,
+  tintOpacity,
+  overlayOnly,
   variant,
   receiveShadow,
   visibility = 'visible',
 }: {
   selected: boolean
   tint?: string
+  tintOpacity?: number
+  overlayOnly?: boolean
   variant: ContentPackInstanceVariant
   receiveShadow: boolean
   visibility?: PlayVisibilityState
@@ -302,17 +348,26 @@ function FallbackMesh({
   const opacity = visibility === 'hidden' ? 0.08 : visibility === 'explored' ? 0.45 : 1
 
   return (
-    <mesh position={[0, yOffset, 0]} castShadow receiveShadow={receiveShadow}>
+    <mesh position={[0, yOffset, 0]} castShadow={!overlayOnly} receiveShadow={!overlayOnly && receiveShadow}>
       <boxGeometry args={geometry} />
-      <meshStandardMaterial
-        color={color}
-        transparent={opacity < 1}
-        opacity={opacity}
-        roughness={0.45}
-        metalness={0.05}
-        emissive={selected ? emissive : '#000000'}
-        emissiveIntensity={selected ? 0.18 : 0}
-      />
+      {overlayOnly ? (
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={tintOpacity ?? 0.42}
+          depthWrite={false}
+        />
+      ) : (
+        <meshStandardMaterial
+          color={color}
+          transparent={opacity < 1}
+          opacity={opacity}
+          roughness={0.45}
+          metalness={0.05}
+          emissive={selected ? emissive : '#000000'}
+          emissiveIntensity={selected ? 0.18 : 0}
+        />
+      )}
     </mesh>
   )
 }

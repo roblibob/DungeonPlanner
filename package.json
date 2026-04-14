@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "generate:content-pack:core": "node scripts/generate-core-pack.mjs",
+    "generate:thumbnails": "node scripts/generate-thumbnails.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

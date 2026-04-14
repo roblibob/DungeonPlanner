@@ -547,6 +547,21 @@ describe('useDungeonStore wall openings', () => {
     })
   })
 
+  it('places an open passage without an asset mesh', () => {
+    const id = useDungeonStore.getState().placeOpening({
+      assetId: null,
+      wallKey: '0:0:north',
+      width: 2,
+      flipped: false,
+    })
+
+    expect(useDungeonStore.getState().wallOpenings[id!]).toMatchObject({
+      assetId: null,
+      wallKey: '0:0:north',
+      width: 2,
+    })
+  })
+
   it('placing an overlapping opening replaces the existing one', () => {
     const first = useDungeonStore.getState().placeOpening({
       assetId: 'core.opening_door_wall_1',
@@ -578,6 +593,31 @@ describe('useDungeonStore wall openings', () => {
 
     useDungeonStore.getState().removeOpening(id!)
     expect(useDungeonStore.getState().wallOpenings[id!]).toBeUndefined()
+  })
+
+  it('updates wall connection tool settings', () => {
+    useDungeonStore.getState().setWallConnectionMode('open')
+    useDungeonStore.getState().setWallConnectionWidth(3)
+
+    const state = useDungeonStore.getState()
+    expect(state.wallConnectionMode).toBe('open')
+    expect(state.wallConnectionWidth).toBe(3)
+  })
+
+  it('places open passages in a single history step', () => {
+    useDungeonStore.getState().placeOpenPassages(['0:0:north', '1:0:north'])
+
+    let state = useDungeonStore.getState()
+    expect(Object.values(state.wallOpenings)).toHaveLength(2)
+    expect(Object.values(state.wallOpenings).every((opening) => opening.assetId === null)).toBe(true)
+
+    state.undo()
+    state = useDungeonStore.getState()
+    expect(Object.keys(state.wallOpenings)).toHaveLength(0)
+
+    state.redo()
+    state = useDungeonStore.getState()
+    expect(Object.values(state.wallOpenings)).toHaveLength(2)
   })
 
   it('undo/redo works for placeOpening', () => {

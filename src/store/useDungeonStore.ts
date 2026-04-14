@@ -116,11 +116,15 @@ export type PostProcessingSettings = {
   bokehScale: number    // artistic bokeh size multiplier
 }
 
+export type WallConnectionMode = 'wall' | 'door' | 'open'
+
 type DungeonState = DungeonSnapshot & {
   cameraMode: CameraMode
   isPaintingStrokeActive: boolean
   isObjectDragActive: boolean
   isRoomResizeHandleActive: boolean
+  wallConnectionMode: WallConnectionMode
+  wallConnectionWidth: 1 | 2 | 3
   selectedRoomId: string | null
   sceneLighting: SceneLighting
   postProcessing: PostProcessingSettings
@@ -148,6 +152,8 @@ type DungeonState = DungeonSnapshot & {
   setTool: (tool: DungeonTool) => void
   selectRoom: (id: string | null) => void
   setRoomResizeHandleActive: (active: boolean) => void
+  setWallConnectionMode: (mode: WallConnectionMode) => void
+  setWallConnectionWidth: (width: 1 | 2 | 3) => void
   setSelectedAsset: (category: ContentPackCategory, assetId: string) => void
   setPaintingStrokeActive: (active: boolean) => void
   setObjectDragActive: (active: boolean) => void
@@ -191,6 +197,7 @@ type DungeonState = DungeonSnapshot & {
   ensureAdjacentFloor: (targetLevel: number, cell: GridCell, opposingAssetId: string, position: [number, number, number], rotation: [number, number, number]) => void
   // Opening actions
   placeOpening: (input: PlaceOpeningInput) => string | null
+  placeOpenPassages: (wallKeys: string[]) => void
   removeOpening: (id: string) => void
   // Persistence
   dungeonName: string
@@ -285,6 +292,33 @@ function createEmptySnapshot(): DungeonSnapshot {
 
 function createObjectId() {
   return crypto.randomUUID()
+}
+
+function addOpeningRecord(
+  wallOpenings: Record<string, OpeningRecord>,
+  input: PlaceOpeningInput,
+  layerId: string,
+) {
+  const id = createObjectId()
+  const newSegments = new Set(getOpeningSegments(input.wallKey, input.width))
+
+  Object.values(wallOpenings).forEach((existing) => {
+    const existingSegments = getOpeningSegments(existing.wallKey, existing.width)
+    if (existingSegments.some((segment) => newSegments.has(segment))) {
+      delete wallOpenings[existing.id]
+    }
+  })
+
+  wallOpenings[id] = {
+    id,
+    assetId: input.assetId,
+    wallKey: input.wallKey,
+    width: input.width,
+    flipped: input.flipped ?? false,
+    layerId,
+  }
+
+  return id
 }
 
 function collectAnchorKeysForCell(cell: GridCell) {
@@ -438,6 +472,8 @@ export const useDungeonStore = create<DungeonState>()(
   isPaintingStrokeActive: false,
   isObjectDragActive: false,
   isRoomResizeHandleActive: false,
+  wallConnectionMode: 'door' as WallConnectionMode,
+  wallConnectionWidth: 1 as 1 | 2 | 3,
   selectedRoomId: null,
   sceneLighting: { intensity: 1 },
   postProcessing: { enabled: false, focusDistance: 0.5, focalLength: 3, bokehScale: 2 },
@@ -854,7 +890,7 @@ export const useDungeonStore = create<DungeonState>()(
     }
 
     const selectedOpening = state.wallOpenings[selection]
-    if (!selectedOpening) {
+    if (!selectedOpening || !selectedOpening.assetId) {
       return
     }
 
@@ -920,6 +956,22 @@ export const useDungeonStore = create<DungeonState>()(
       : {
           ...current,
           isRoomResizeHandleActive: active,
+        })
+  },
+  setWallConnectionMode: (mode) => {
+    set((current) => current.wallConnectionMode === mode
+      ? current
+      : {
+          ...current,
+          wallConnectionMode: mode,
+        })
+  },
+  setWallConnectionWidth: (width) => {
+    set((current) => current.wallConnectionWidth === width
+      ? current
+      : {
+          ...current,
+          wallConnectionWidth: width,
         })
   },
   setSelectedAsset: (category, assetId) => {
@@ -1679,26 +1731,11 @@ export const useDungeonStore = create<DungeonState>()(
 
 
   placeOpening: (input) => {
-    const id = createObjectId()
+    let openingId: string | null = null
     set((current) => {
       const previousSnapshot = cloneSnapshot(current)
       const wallOpenings = { ...current.wallOpenings }
-      // Remove any existing opening whose segments overlap with this one
-      const newSegments = new Set(getOpeningSegments(input.wallKey, input.width))
-      Object.values(wallOpenings).forEach((existing) => {
-        const existingSegments = getOpeningSegments(existing.wallKey, existing.width)
-        if (existingSegments.some((s) => newSegments.has(s))) {
-          delete wallOpenings[existing.id]
-        }
-      })
-      wallOpenings[id] = {
-        id,
-        assetId: input.assetId,
-        wallKey: input.wallKey,
-        width: input.width,
-        flipped: input.flipped ?? false,
-        layerId: current.activeLayerId,
-      }
+      openingId = addOpeningRecord(wallOpenings, input, current.activeLayerId)
       return {
         ...current,
         wallOpenings,
@@ -1706,7 +1743,32 @@ export const useDungeonStore = create<DungeonState>()(
         future: [],
       }
     })
-    return id
+    return openingId
+  },
+  placeOpenPassages: (wallKeys) => {
+    if (wallKeys.length === 0) {
+      return
+    }
+
+    set((current) => {
+      const previousSnapshot = cloneSnapshot(current)
+      const wallOpenings = { ...current.wallOpenings }
+
+      wallKeys.forEach((wallKey) => {
+        addOpeningRecord(
+          wallOpenings,
+          { assetId: null, wallKey, width: 1, flipped: false },
+          current.activeLayerId,
+        )
+      })
+
+      return {
+        ...current,
+        wallOpenings,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
   },
   removeOpening: (id) => {
     set((current) => {

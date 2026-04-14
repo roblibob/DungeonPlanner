@@ -379,7 +379,7 @@ function RoomNode({ room, props, openings, selection, onSelectProp, onSelectOpen
                 return (
                   <LeafRow
                     key={opening.id}
-                    label={asset?.name ?? 'Unknown opening'}
+                    label={opening.assetId ? (asset?.name ?? 'Unknown opening') : 'Open passage'}
                     detail={direction}
                     active={selection === opening.id}
                     onClick={() => onSelectOpening(opening.id)}

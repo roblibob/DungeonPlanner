@@ -57,13 +57,13 @@ export function SelectToolPanel() {
       <div className="space-y-4">
         <section>
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-sky-200/70">
-            Selected Opening
+            Selected Connection
           </p>
           <div className="rounded-2xl border border-stone-800 bg-stone-900/80 p-4">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                  {openingAsset?.name ?? 'Unknown opening'}
+                  {selectedOpening.assetId ? (openingAsset?.name ?? 'Unknown opening') : 'Open passage'}
                 </p>
                 <p className="mt-1 font-mono text-sm text-stone-200">
                   {selectedOpening.id.slice(0, 8)}

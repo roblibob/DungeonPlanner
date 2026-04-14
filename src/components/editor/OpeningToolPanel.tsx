@@ -3,7 +3,9 @@ import { useDungeonStore } from '../../store/useDungeonStore'
 
 export function OpeningToolPanel() {
   const selectedAssetIds = useDungeonStore((state) => state.selectedAssetIds)
+  const wallConnectionMode = useDungeonStore((state) => state.wallConnectionMode)
   const setSelectedAsset = useDungeonStore((state) => state.setSelectedAsset)
+  const setWallConnectionMode = useDungeonStore((state) => state.setWallConnectionMode)
   const selection = useDungeonStore((state) => state.selection)
   const selectedOpening = useDungeonStore((state) =>
     selection ? state.wallOpenings[selection] : null,
@@ -18,45 +20,83 @@ export function OpeningToolPanel() {
     <div className="space-y-4">
       <section>
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70">
-          Openings
+          Connections
         </p>
-        {openingAssets.length === 0 ? (
-          <p className="rounded-2xl border border-stone-800 bg-stone-950/50 px-4 py-3 text-xs text-stone-500">
-            No opening assets in content pack.
-          </p>
-        ) : (
-          <div className="grid gap-2">
-            {openingAssets.map((asset) => {
-              const active = selectedAssetIds.opening === asset.id
-              return (
-                <button
-                  key={asset.id}
-                  type="button"
-                  onClick={() => setSelectedAsset('opening', asset.id)}
-                  className={`rounded-2xl border px-3 py-3 text-left transition ${
-                    active
-                      ? 'border-teal-300/35 bg-teal-400/10'
-                      : 'border-stone-800 bg-stone-950/60 hover:border-stone-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-stone-100">{asset.name}</span>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400">
-                      {active ? 'Selected' : `w${asset.metadata?.openingWidth ?? 1}`}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-stone-500">{asset.slug}</p>
-                </button>
-              )
-            })}
-          </div>
-        )}
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            ['wall', 'Wall'],
+            ['door', 'Door'],
+            ['open', 'Open'],
+          ] as const).map(([mode, label]) => {
+            const active = wallConnectionMode === mode
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setWallConnectionMode(mode)}
+                className={`rounded-2xl border px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] transition ${
+                  active
+                    ? 'border-teal-300/35 bg-teal-400/10 text-teal-200'
+                    : 'border-stone-800 bg-stone-950/60 text-stone-400 hover:border-stone-700 hover:text-stone-200'
+                }`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
       </section>
 
+      {wallConnectionMode === 'door' && (
+        <section>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70">
+            Opening Assets
+          </p>
+          {openingAssets.length === 0 ? (
+            <p className="rounded-2xl border border-stone-800 bg-stone-950/50 px-4 py-3 text-xs text-stone-500">
+              No opening assets in content pack.
+            </p>
+          ) : (
+            <div className="grid gap-2">
+              {openingAssets.map((asset) => {
+                const active = selectedAssetIds.opening === asset.id
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => setSelectedAsset('opening', asset.id)}
+                    className={`rounded-2xl border px-3 py-3 text-left transition ${
+                      active
+                        ? 'border-teal-300/35 bg-teal-400/10'
+                        : 'border-stone-800 bg-stone-950/60 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium text-stone-100">{asset.name}</span>
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400">
+                        {active ? 'Selected' : `w${asset.metadata?.openingWidth ?? 1}`}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-stone-500">{asset.slug}</p>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-xs leading-6 text-stone-400">
-        <p className="font-medium text-stone-300">Opening Tool</p>
-        <p className="mt-1">Hover a wall edge to preview. Click to place.</p>
-        <p>Right-click an opening to remove.</p>
+        <p className="font-medium text-stone-300">Connection Tool</p>
+        <p className="mt-1">
+          {wallConnectionMode === 'wall'
+            ? 'Click an existing door or passage to restore the wall.'
+            : wallConnectionMode === 'open'
+              ? 'Click and drag across shared walls to open them. The camera stays locked until you release.'
+              : 'Hover a wall edge to preview a door. Click to place.'}
+        </p>
+        <p>Floor-connected opening assets still place normally.</p>
+        <p>Right-click a connection to remove it.</p>
         <p>Hold <kbd>Alt</kbd> + click to inspect.</p>
       </section>
 
@@ -70,7 +110,7 @@ export function OpeningToolPanel() {
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                  {selectedAsset?.name ?? 'Unknown opening'}
+                  {selectedOpening.assetId ? (selectedAsset?.name ?? 'Unknown opening') : 'Open passage'}
                 </p>
                 <p className="mt-1 font-mono text-sm text-stone-200">
                   {selectedOpening.id.slice(0, 8)}

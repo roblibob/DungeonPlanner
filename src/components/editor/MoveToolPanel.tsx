@@ -1,18 +1,5 @@
-import { Axis3D, Gauge, Grid, LayoutGrid, Triangle } from 'lucide-react'
-import { useDungeonStore, type CameraPreset } from '../../store/useDungeonStore'
-
-type PresetEntry = {
-  id: CameraPreset
-  label: string
-  sub: string
-  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>
-}
-
-const CAMERA_PRESETS: PresetEntry[] = [
-  { id: 'perspective', label: 'Perspective', sub: 'Full orbit',     Icon: Triangle },
-  { id: 'isometric',   label: 'Isometric',   sub: 'Locked angle',   Icon: Axis3D },
-  { id: 'top-down',    label: 'Top Down',    sub: 'Print / TTRPG',  Icon: LayoutGrid },
-]
+import { Gauge, Grid } from 'lucide-react'
+import { useDungeonStore } from '../../store/useDungeonStore'
 
 const FPS_OPTIONS: { value: 0 | 30 | 60 | 120; label: string }[] = [
   { value: 30,  label: '30' },
@@ -22,8 +9,6 @@ const FPS_OPTIONS: { value: 0 | 30 | 60 | 120; label: string }[] = [
 ]
 
 export function MoveToolPanel() {
-  const setCameraPreset = useDungeonStore((state) => state.setCameraPreset)
-  const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
   const showGrid = useDungeonStore((state) => state.showGrid)
   const setShowGrid = useDungeonStore((state) => state.setShowGrid)
   const sceneLighting = useDungeonStore((state) => state.sceneLighting)
@@ -35,46 +20,11 @@ export function MoveToolPanel() {
 
   return (
     <div className="space-y-4">
-      {/* Camera Positions */}
+      {/* Performance */}
       <section>
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70">
-          Camera
+          Performance
         </p>
-        <div className="grid grid-cols-1 gap-2">
-          {CAMERA_PRESETS.map(({ id, label, sub, Icon }) => {
-            const active = activeCameraMode === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setCameraPreset(id)}
-                className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
-                  active
-                    ? 'border-amber-300/40 bg-amber-400/10 text-amber-200'
-                    : 'border-stone-800 bg-stone-950/60 text-stone-300 hover:border-stone-700 hover:bg-stone-900/60'
-                }`}
-              >
-                <Icon size={16} strokeWidth={active ? 2 : 1.5} />
-                <div className="flex-1">
-                  <p className="text-sm font-medium leading-tight">{label}</p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-stone-500">{sub}</p>
-                </div>
-                {active && (
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-amber-300/70">Active</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-        {activeCameraMode !== 'perspective' && (
-          <p className="mt-2 text-[10px] leading-5 text-stone-600">
-            {activeCameraMode === 'isometric'
-              ? 'Rotation locked · WASD to pan'
-              : 'Rotation locked · WASD to pan · scroll to zoom'}
-          </p>
-        )}
-
-        {/* FPS limit */}
         <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/60 px-4 py-3">
           <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-stone-400">
             <Gauge size={12} strokeWidth={1.5} />

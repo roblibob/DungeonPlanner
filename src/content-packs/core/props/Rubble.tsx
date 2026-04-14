@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import rubbleAssetUrl from '../../../assets/models/core/rubble.glb'
+import rubbleThumbnailUrl from '../../../assets/models/core/rubble.png'
 import rubble001AssetUrl from '../../../assets/models/core/rubble_001.glb'
 import rubble002AssetUrl from '../../../assets/models/core/rubble_002.glb'
 import rubble003AssetUrl from '../../../assets/models/core/rubble_003.glb'
@@ -55,6 +56,7 @@ export const propsRubbleAsset: ContentPackAsset = {
   name: 'Rubble',
   category: 'prop',
   assetUrl: rubbleAssetUrl,
+  thumbnailUrl: rubbleThumbnailUrl,
   Component: PropsRubble,
   metadata: {
     connectsTo: 'FLOOR',

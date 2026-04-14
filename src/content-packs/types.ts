@@ -37,6 +37,7 @@ export type ContentPackAsset = {
   name: string
   category: ContentPackCategory
   assetUrl: string
+  thumbnailUrl?: string
   Component: ComponentType<ContentPackComponentProps>
   metadata?: ContentPackAssetMetadata
   getLight?: (objectProps: Record<string, unknown>) => PropLight | null

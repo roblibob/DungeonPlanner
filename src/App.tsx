@@ -3,6 +3,7 @@ import { overlayDomRef } from './components/canvas/floorTransition'
 import { getDefaultAssetIdByCategory } from './content-packs/registry'
 import { getContentPackAssetById } from './content-packs/registry'
 import { EditorToolbar } from './components/editor/EditorToolbar'
+import { CameraDropdown } from './components/editor/CameraDropdown'
 import { MoveToolPanel } from './components/editor/MoveToolPanel'
 import { RoomToolPanel } from './components/editor/RoomToolPanel'
 import { PropToolPanel } from './components/editor/PropToolPanel'
@@ -50,11 +51,11 @@ function RightPanel() {
             : tool === 'select'
               ? 'Select'
               : tool === 'move'
-                ? 'Camera'
+                ? 'Settings'
                 : tool === 'room'
                   ? 'Room'
                   : tool === 'opening'
-                    ? 'Openings'
+                    ? 'Connections'
                     : 'Props'}
         </p>
         {tool === 'play' && null}
@@ -238,9 +239,11 @@ function App() {
     tool === 'play'
       ? 'Drag characters to move them'
       : tool === 'move'
-      ? 'WASD / arrows to pan · Q/E to rotate'
+      ? 'Application settings and viewport controls'
       : tool === 'room'
         ? 'Click room to select · drag room edges to resize · rectangular rooms also show corner handles · left-drag empty space to build · right-drag to erase'
+        : tool === 'opening'
+          ? 'Choose Wall, Door, or Open passage · click shared walls to connect rooms'
         : 'Click to place · R to rotate · right-click to remove · Alt+click to inspect'
 
   return (
@@ -269,6 +272,8 @@ function App() {
               <Scene />
             </Suspense>
 
+            <CameraDropdown />
+
             {/* Floor-switch transition overlay — opacity driven imperatively by FloorTransitionController */}
             <div
               ref={overlayDomRef}
@@ -283,11 +288,13 @@ function App() {
                   ? 'Play'
                   : tool === 'select'
                     ? 'Select'
-                    : tool === 'move'
-                      ? 'Camera'
+                  : tool === 'move'
+                      ? 'Settings'
                       : tool === 'room'
                         ? 'Room'
-                  : 'Prop'}
+                        : tool === 'opening'
+                          ? 'Connections'
+                          : 'Prop'}
               </p>
               <p className="mt-1.5 text-xs text-stone-400">{toolHint}</p>
             </div>
@@ -353,7 +360,7 @@ function DebugVisibilityPanel({
   return (
     <aside
       data-testid="debug-visibility-panel"
-      className="absolute right-4 top-4 z-20 flex w-72 flex-col gap-4 rounded-2xl border border-emerald-400/25 bg-stone-950/92 p-4 shadow-2xl backdrop-blur"
+      className="absolute right-4 top-20 z-20 flex w-72 flex-col gap-4 rounded-2xl border border-emerald-400/25 bg-stone-950/92 p-4 shadow-2xl backdrop-blur"
     >
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300/85">

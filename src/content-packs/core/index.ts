@@ -5,6 +5,7 @@ import { propsWallTorchAsset } from './props/WallTorch'
 import { propsStairCaseUpAsset } from './openings/StairCaseUp'
 import { propsStairCaseDownAsset } from './openings/StairCaseDown'
 import { propsRubbleAsset } from './props/Rubble'
+import { propsBarrelAsset } from './props/Barrel'
 import { propsPillarAsset } from './props/Pillar'
 import { propsPillarWallAsset } from './props/PillarWall'
 import { openingDoorWall1Asset } from './openings/DoorWall1'
@@ -23,6 +24,7 @@ export const coreContentPack: ContentPack = {
     propsRubbleAsset,
     propsPillarAsset,
     propsPillarWallAsset,
+    propsBarrelAsset,
     playerBarbarianAsset,
     openingDoorWall1Asset,
     openingDoorWall3Asset,

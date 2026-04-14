@@ -306,13 +306,25 @@ function OpeningRenderer({
 
   return (
     <group ref={groupRef} position={wallPosition.position} rotation={rotation}>
-      <ContentPackInstance
-        assetId={opening.assetId}
-        selected={selected && !ppEnabled}
-        variant="wall"
-        visibility={visibility.getWallVisibility(opening.wallKey)}
-        onClick={handleClick}
-      />
+      {opening.assetId ? (
+        <ContentPackInstance
+          assetId={opening.assetId}
+          selected={selected && !ppEnabled}
+          variant="wall"
+          visibility={visibility.getWallVisibility(opening.wallKey)}
+          onClick={handleClick}
+        />
+      ) : (
+        <mesh onClick={handleClick}>
+          <boxGeometry args={[opening.width * GRID_SIZE * 0.95, 2.2, 0.1]} />
+          <meshBasicMaterial
+            transparent
+            opacity={selected ? 0.18 : 0}
+            color={selected ? '#22c55e' : '#ffffff'}
+            depthTest={false}
+          />
+        </mesh>
+      )}
     </group>
   )
 }

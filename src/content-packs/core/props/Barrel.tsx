@@ -1,15 +1,15 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
-import propsPillarAssetUrl from '../../../assets/models/core/pillar.glb'
-import propsPillarThumbnailUrl from '../../../assets/models/core/pillar.png'
+import propsBarrelAssetUrl from '../../../assets/models/core/barrel.glb'
+import propsBarrelThumbnailUrl from '../../../assets/models/core/barrel.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 // Adjust this to compensate for the authored pivot of the prop.
-const PROP_PIVOT_OFFSET = [0, 0, 0] as const
+const PROP_PIVOT_OFFSET = [0, 1, 0] as const
 
-export function PropsPillar(props: ContentPackComponentProps) {
-  const gltf = useGLTF(propsPillarAssetUrl)
+export function PropsBarrel(props: ContentPackComponentProps) {
+  const gltf = useGLTF(propsBarrelAssetUrl)
   const scene = useMemo(() => gltf.scene.clone(), [gltf.scene])
 
   return (
@@ -21,16 +21,16 @@ export function PropsPillar(props: ContentPackComponentProps) {
   )
 }
 
-useGLTF.preload(propsPillarAssetUrl)
+useGLTF.preload(propsBarrelAssetUrl)
 
-export const propsPillarAsset: ContentPackAsset = {
-  id: 'core.props_pillar',
-  slug: 'props_pillar',
-  name: 'Pillar',
+export const propsBarrelAsset: ContentPackAsset = {
+  id: 'core.props_barrel',
+  slug: 'props_barrel',
+  name: 'Barrel',
   category: 'prop',
-  assetUrl: propsPillarAssetUrl,
-  thumbnailUrl: propsPillarThumbnailUrl,
-  Component: PropsPillar,
+  assetUrl: propsBarrelAssetUrl,
+  thumbnailUrl: propsBarrelThumbnailUrl,
+  Component: PropsBarrel,
   metadata: {
     connectsTo: 'FLOOR',
     blocksLineOfSight: false,

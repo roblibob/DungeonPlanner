@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { SkeletonUtils } from 'three-stdlib'
 import playerBarbarianAssetUrl from '../../../assets/models/core/player-barbarian.glb'
+import playerBarbarianThumbnailUrl from '../../../assets/models/core/player-barbarian.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 const PLAYER_PIVOT_OFFSET = [0, 0, 0] as const
@@ -28,6 +29,7 @@ export const playerBarbarianAsset: ContentPackAsset = {
   name: 'Barbarian',
   category: 'player',
   assetUrl: playerBarbarianAssetUrl,
+  thumbnailUrl: playerBarbarianThumbnailUrl,
   Component: PlayerBarbarian,
   metadata: {
     connectsTo: 'FLOOR'

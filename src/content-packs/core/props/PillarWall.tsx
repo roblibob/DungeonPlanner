@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import propsPillarWallAssetUrl from '../../../assets/models/core/pillar.glb'
+import propsPillarWallThumbnailUrl from '../../../assets/models/core/pillar.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 // Adjust this to compensate for the authored pivot of the prop.
@@ -28,6 +29,7 @@ export const propsPillarWallAsset: ContentPackAsset = {
   name: 'Pillar Wall',
   category: 'prop',
   assetUrl: propsPillarWallAssetUrl,
+  thumbnailUrl: propsPillarWallThumbnailUrl,
   Component: PropsPillarWall,
   metadata: {
     connectsTo: 'WALL',

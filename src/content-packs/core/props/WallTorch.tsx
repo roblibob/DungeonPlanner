@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import propsWallTorchAssetUrl from '../../../assets/models/core/torch.glb'
 import propsWallTorchLitAssetUrl from '../../../assets/models/core/tortch_lit.glb'
+import propsWallTorchThumbnailUrl from '../../../assets/models/core/props_wall_torch.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 // Adjust this to compensate for the authored pivot of the prop.
@@ -41,6 +42,7 @@ export const propsWallTorchAsset: ContentPackAsset = {
   name: 'Wall Torch',
   category: 'prop',
   assetUrl: propsWallTorchAssetUrl,
+  thumbnailUrl: propsWallTorchThumbnailUrl,
   Component: PropsWallTorch,
   getLight: (objectProps) => (objectProps.lit === false ? null : TORCH_LIGHT),
   getPlayModeNextProps: (objectProps) => ({

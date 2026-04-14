@@ -9,9 +9,9 @@ import {
   Joystick,
   MousePointer2,
   Redo2,
+  Settings,
   Undo2,
   Upload,
-  Video,
 } from 'lucide-react'
 import { useDungeonStore, type DungeonTool } from '../../store/useDungeonStore'
 
@@ -21,7 +21,6 @@ const TOOLS: { id: DungeonTool; Icon: React.ComponentType<{ size?: number; strok
   { id: 'room',    Icon: Blocks,        label: 'Room' },
   { id: 'prop',    Icon: Box,           label: 'Prop' },
   { id: 'opening', Icon: DoorOpen,      label: 'Opening' },
-  { id: 'move',    Icon: Video,         label: 'Camera' },
 ]
 
 export function EditorToolbar() {
@@ -66,6 +65,7 @@ export function EditorToolbar() {
       {/* File menu + Undo/Redo at bottom */}
       <div className="flex flex-col items-center gap-1">
         <FileMenuButton />
+        <SettingsButton />
         <div className="my-1 h-px w-6 bg-stone-800" />
         <button
           type="button"
@@ -87,6 +87,27 @@ export function EditorToolbar() {
         </button>
       </div>
     </div>
+  )
+}
+
+function SettingsButton() {
+  const tool = useDungeonStore((state) => state.tool)
+  const setTool = useDungeonStore((state) => state.setTool)
+  const active = tool === 'move'
+
+  return (
+    <button
+      type="button"
+      title="Settings"
+      onClick={() => setTool('move')}
+      className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+        active
+          ? 'bg-amber-400/20 text-amber-300'
+          : 'text-stone-500 hover:bg-stone-800 hover:text-stone-200'
+      }`}
+    >
+      <Settings size={16} strokeWidth={active ? 2 : 1.5} />
+    </button>
   )
 }
 
