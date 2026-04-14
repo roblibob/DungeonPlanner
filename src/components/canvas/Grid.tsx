@@ -18,19 +18,21 @@ import {
 } from '../../hooks/useSnapToGrid'
 import {
   useDungeonStore,
-  getOpeningSegments,
   type DungeonTool,
   type PaintedCellRecord,
 } from '../../store/useDungeonStore'
+import { getOpeningSegments } from '../../store/openingSegments'
 import { triggerBuild } from '../../store/buildAnimations'
 import { FloorGridOverlay } from './FloorGridOverlay'
 import { ContentPackInstance } from './ContentPackInstance'
+import { getGridOverlayRadius, isPassiveGridMode, shouldRenderGridOverlay } from './gridMode'
 
 type GridProps = {
   size?: number
+  playMode?: boolean
 }
 
-export function Grid({ size = 120 }: GridProps) {
+export function Grid({ size = 120, playMode = false }: GridProps) {
   const { snap } = useSnapToGrid()
   const raycaster = useRaycaster(0)
   const { gl } = useThree()
@@ -333,13 +335,10 @@ export function Grid({ size = 120 }: GridProps) {
     // preventDefault is handled by the non-passive canvas listener
   }
 
-  const isNavigationTool = tool === 'move' || tool === 'select'
+  const isNavigationTool = isPassiveGridMode(tool, playMode)
   const activeCameraMode = useDungeonStore((state) => state.activeCameraMode)
-  const isTopDown = activeCameraMode === 'top-down'
-
-  // Unified grid: always shown when showGrid is on.
-  // Cursor reveal radius: huge in top-down (covers whole scene), medium otherwise.
-  const overlayRadius = isTopDown ? 10000 : 10
+  const overlayRadius = getGridOverlayRadius(activeCameraMode, playMode)
+  const renderGridOverlay = shouldRenderGridOverlay(showGrid, playMode)
 
   return (
     <group>
@@ -363,11 +362,12 @@ export function Grid({ size = 120 }: GridProps) {
 
       <CursorLight centerRef={mousePosRef} activeRef={cursorActiveRef} />
 
-      {showGrid && (
+      {renderGridOverlay && (
         <FloorGridOverlay
           centerRef={mousePosRef}
           radius={overlayRadius}
           size={size}
+          showBase={!playMode}
         />
       )}
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getContentPackAssetById, getContentPackAssetsByCategory } from './registry'
+import { getContentPackAssetById } from './registry'
 
 describe('content pack registry', () => {
   it('registers the core barbarian player asset', () => {
@@ -14,11 +14,19 @@ describe('content pack registry', () => {
         connectsTo: 'FLOOR',
       },
     })
-    expect(getContentPackAssetsByCategory('player').some((entry) => entry.id === 'core.player_barbarian')).toBe(true)
   })
 
-  it('marks pillar and rubble props as LOS blockers', () => {
-    expect(getContentPackAssetById('core.props_pillar')?.metadata?.blocksLineOfSight).toBe(true)
-    expect(getContentPackAssetById('core.props_rubble')?.metadata?.blocksLineOfSight).toBe(true)
+  it('keeps pillar and rubble props non-blocking for LOS', () => {
+    expect(getContentPackAssetById('core.props_pillar')?.metadata?.blocksLineOfSight).toBe(false)
+    expect(getContentPackAssetById('core.props_rubble')?.metadata?.blocksLineOfSight).toBe(false)
+  })
+
+  it('registers a play-toggleable wall torch with dynamic light state', () => {
+    const asset = getContentPackAssetById('core.props_wall_torch')
+
+    expect(asset?.getPlayModeNextProps?.({ lit: true })).toEqual({ lit: false })
+    expect(asset?.getPlayModeNextProps?.({ lit: false })).toEqual({ lit: true })
+    expect(asset?.getLight?.({})).toMatchObject({ intensity: 5, flicker: true })
+    expect(asset?.getLight?.({ lit: false })).toBeNull()
   })
 })

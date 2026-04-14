@@ -29,6 +29,7 @@ function SelectionOutline({ source }: { source: THREE.Object3D }) {
         obj.renderOrder = 999
       }
     })
+    markIgnoreLosRaycast(clone)
     disableRaycast(clone)
     clone.scale.multiplyScalar(1.015)
     return clone
@@ -64,6 +65,7 @@ function TintOverlay({
         obj.renderOrder = 1
       }
     })
+    markIgnoreLosRaycast(clone)
     disableRaycast(clone)
     return clone
   }, [source, color, opacity])
@@ -78,6 +80,7 @@ type ContentPackInstanceProps = ThreeElements['group'] & {
   visibility?: PlayVisibilityState
   variant: ContentPackInstanceVariant
   variantKey?: string
+  objectProps?: Record<string, unknown>
 }
 
 export function ContentPackInstance({
@@ -87,6 +90,7 @@ export function ContentPackInstance({
   visibility = 'visible',
   variant,
   variantKey,
+  objectProps,
   ...groupProps
 }: ContentPackInstanceProps) {
   const asset = assetId ? getContentPackAssetById(assetId) : null
@@ -131,7 +135,7 @@ export function ContentPackInstance({
       {AssetComponent ? (
         <ComponentAsset
           Component={AssetComponent}
-          componentProps={getComponentProps(variantKey)}
+          componentProps={getComponentProps(variantKey, objectProps)}
           receiveShadow={receiveShadow}
           selected={selected}
           tint={tint}
@@ -152,8 +156,14 @@ export function ContentPackInstance({
   )
 }
 
-function getComponentProps(variantKey?: string): ContentPackComponentProps {
-  return variantKey ? { variantKey } : {}
+function getComponentProps(
+  variantKey?: string,
+  objectProps?: Record<string, unknown>,
+): ContentPackComponentProps {
+  return {
+    ...(variantKey ? { variantKey } : {}),
+    ...(objectProps ? { objectProps } : {}),
+  }
 }
 
 function GLTFModel({
@@ -255,6 +265,12 @@ function disableRaycast(object: THREE.Object3D) {
     if (child instanceof THREE.Mesh) {
       child.raycast = () => {}
     }
+  })
+}
+
+function markIgnoreLosRaycast(object: THREE.Object3D) {
+  object.traverse((child) => {
+    child.userData.ignoreLosRaycast = true
   })
 }
 

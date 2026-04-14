@@ -22,6 +22,7 @@ export const DungeonObject = memo(function DungeonObject({
   const selection = useDungeonStore((state) => state.selection)
   const selectObject = useDungeonStore((state) => state.selectObject)
   const removeObject = useDungeonStore((state) => state.removeObject)
+  const setObjectProps = useDungeonStore((state) => state.setObjectProps)
   const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const tool = useDungeonStore((state) => state.tool)
   const selected = selection === object.id
@@ -34,9 +35,18 @@ export const DungeonObject = memo(function DungeonObject({
   }, [object.id])
 
   const asset = object.assetId ? getContentPackAssetById(object.assetId) : null
-  const light = asset?.metadata?.light
+  const light = asset?.getLight?.(object.props) ?? asset?.metadata?.light ?? null
 
   function handleClick(event: ThreeEvent<MouseEvent>) {
+    if (tool === 'play') {
+      const nextProps = asset?.getPlayModeNextProps?.(object.props) ?? null
+      if (nextProps) {
+        event.stopPropagation()
+        setObjectProps(object.id, nextProps)
+      }
+      return
+    }
+
     if (tool === 'select') {
       event.stopPropagation()
       selectObject(object.id)
@@ -76,6 +86,7 @@ export const DungeonObject = memo(function DungeonObject({
         assetId={object.assetId}
         selected={showHullOutline}
         variantKey={object.cellKey}
+        objectProps={object.props}
         visibility={visibilityState}
         userData={{ objectId: object.id }}
         onPointerDown={handlePointerDown}

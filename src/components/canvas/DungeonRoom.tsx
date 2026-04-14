@@ -11,10 +11,10 @@ import {
 } from '../../hooks/useSnapToGrid'
 import {
   useDungeonStore,
-  getOpeningSegments,
   type OpeningRecord,
   type PaintedCells,
 } from '../../store/useDungeonStore'
+import { getOpeningSegments } from '../../store/openingSegments'
 import { getBuildYOffset, isAnimationActive } from '../../store/buildAnimations'
 import { ContentPackInstance } from './ContentPackInstance'
 import { registerObject, unregisterObject } from './objectRegistry'

@@ -31,6 +31,6 @@ export const propsPillarAsset: ContentPackAsset = {
   Component: PropsPillar,
   metadata: {
     connectsTo: 'FLOOR',
-    blocksLineOfSight: true,
+    blocksLineOfSight: false,
   },
 }

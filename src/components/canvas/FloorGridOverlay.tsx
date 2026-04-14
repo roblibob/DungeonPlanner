@@ -31,9 +31,10 @@ type Props = {
   centerRef: React.MutableRefObject<THREE.Vector2>
   size?: number
   radius?: number
+  showBase?: boolean
 }
 
-export function FloorGridOverlay({ centerRef, size = 120, radius = 10 }: Props) {
+export function FloorGridOverlay({ centerRef, size = 120, radius = 10, showBase = true }: Props) {
   const paintedCells = useDungeonStore((state) => state.paintedCells)
   const layers       = useDungeonStore((state) => state.layers)
 
@@ -164,13 +165,15 @@ export function FloorGridOverlay({ centerRef, size = 120, radius = 10 }: Props) 
   return (
     <>
       {/* Full-coverage base: dark grid + thick axes */}
-      <mesh
-        geometry={fullGeo}
-        material={baseMat as unknown as THREE.Material}
-        position={[0, GRID_Y, 0]}
-        renderOrder={1}
-        frustumCulled={false}
-      />
+      {showBase && (
+        <mesh
+          geometry={fullGeo}
+          material={baseMat as unknown as THREE.Material}
+          position={[0, GRID_Y, 0]}
+          renderOrder={1}
+          frustumCulled={false}
+        />
+      )}
       {/* Cursor glow: only on painted floor cells, renders on top of base */}
       {cells.length > 0 && (
         <instancedMesh

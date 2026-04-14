@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import * as THREE from 'three'
 import {
   buildPortalLookup,
   castVisibilityMaskRay,
@@ -7,6 +8,8 @@ import {
   isVisiblePlayerOrigin,
 } from './playVisibility'
 import type { OpeningRecord, PaintedCells } from '../../store/useDungeonStore'
+import { GRID_SIZE } from '../../hooks/useSnapToGrid'
+import { registerObject, unregisterObject } from './objectRegistry'
 
 function makeCells(entries: Array<{ cell: [number, number]; roomId?: string | null }>): PaintedCells {
   return Object.fromEntries(
@@ -151,6 +154,77 @@ describe('computeVisibleCellKeys', () => {
     expect(computeVisibleCellKeys(paintedCells, {}, [[0, 0], [4, 0]], 1)).toEqual(
       expect.arrayContaining(['0:0', '1:0', '4:0', '5:0']),
     )
+  })
+
+  it('can see through a blocker cell when the actual blocker mesh does not intersect the ray', () => {
+    const paintedCells = makeCells([
+      { cell: [0, 0], roomId: 'room-a' },
+      { cell: [1, 0], roomId: 'room-a' },
+      { cell: [2, 0], roomId: 'room-a' },
+    ])
+
+    const blockerId = 'blocker-miss'
+    const blocker = new THREE.Group()
+    blocker.position.set(0, 0, 0)
+    blocker.add(
+      new THREE.Mesh(
+        new THREE.BoxGeometry(0.24, 1.4, 0.24),
+        new THREE.MeshBasicMaterial(),
+      ),
+    )
+    blocker.children[0]?.position.set(GRID_SIZE * 1.78, 0.7, GRID_SIZE * 0.88)
+    registerObject(blockerId, blocker)
+
+    try {
+      const visible = computeVisibleCellKeys(
+        paintedCells,
+        {},
+        [[0, 0]],
+        3,
+        ['1:0'],
+        new Map([['1:0', [blockerId]]]),
+      )
+
+      expect(visible).toContain('2:0')
+    } finally {
+      unregisterObject(blockerId)
+    }
+  })
+
+  it('stops at the blocker cell when the serialized blocker mesh intersects the ray', () => {
+    const paintedCells = makeCells([
+      { cell: [0, 0], roomId: 'room-a' },
+      { cell: [1, 0], roomId: 'room-a' },
+      { cell: [2, 0], roomId: 'room-a' },
+    ])
+
+    const blockerId = 'blocker-hit'
+    const blocker = new THREE.Group()
+    blocker.position.set(0, 0, 0)
+    blocker.add(
+      new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 1.4, 0.28),
+        new THREE.MeshBasicMaterial(),
+      ),
+    )
+    blocker.children[0]?.position.set(GRID_SIZE * 1.5, 0.7, GRID_SIZE * 0.5)
+    registerObject(blockerId, blocker)
+
+    try {
+      const visible = computeVisibleCellKeys(
+        paintedCells,
+        {},
+        [[0, 0]],
+        3,
+        ['1:0'],
+        new Map([['1:0', [blockerId]]]),
+      )
+
+      expect(visible).toContain('1:0')
+      expect(visible).not.toContain('2:0')
+    } finally {
+      unregisterObject(blockerId)
+    }
   })
 })
 

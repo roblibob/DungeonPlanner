@@ -147,7 +147,7 @@ function GlobalContent() {
         position={[-8, 7, -4]}
       />
 
-      {tool !== 'play' && <Grid />}
+      <Grid playMode={tool === 'play'} />
       <Controls />
       <FloorTransitionController />
       <CameraPresetManager />

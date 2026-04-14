@@ -4,6 +4,9 @@ import { getDefaultAssetIdByCategory } from '../content-packs/registry'
 import { getCellKey, type GridCell } from '../hooks/useSnapToGrid'
 import type { ContentPackCategory, PropConnector } from '../content-packs/types'
 import { serializeDungeon, deserializeDungeon } from './serialization'
+import { getOpeningSegments } from './openingSegments'
+
+export { getOpeningSegments } from './openingSegments'
 
 export type DungeonTool = 'move' | 'room' | 'prop' | 'opening' | 'select' | 'play'
 export type CameraMode = 'orbit'
@@ -122,6 +125,7 @@ type DungeonState = DungeonSnapshot & {
   eraseCells: (cells: GridCell[]) => number
   placeObject: (input: PlaceObjectInput) => string | null
   moveObject: (id: string, input: MoveObjectInput) => boolean
+  setObjectProps: (id: string, props: Record<string, unknown>) => boolean
   mergeExploredCells: (cellKeys: string[]) => void
   clearExploredCells: () => void
   removeObject: (id: string) => void
@@ -349,24 +353,6 @@ function isPropAnchorValid(
   const neighborRecord = paintedCells[getCellKey(neighbor)]
   if (!neighborRecord) return true
   return (cellRecord?.roomId ?? null) !== (neighborRecord.roomId ?? null)
-}
-
-/** Returns all wall segment keys covered by an opening anchor + width. */
-export function getOpeningSegments(wallKey: string, width: 1 | 2 | 3): string[] {
-  if (width === 1) return [wallKey]
-  const parts = wallKey.split(':')
-  const cx = parseInt(parts[0])
-  const cz = parseInt(parts[1])
-  const dir = parts[2]
-  const isNS = dir === 'north' || dir === 'south'
-  const halfLeft = Math.floor((width - 1) / 2)
-  const segments: string[] = []
-  for (let i = -halfLeft; i < -halfLeft + width; i++) {
-    const nx = isNS ? cx + i : cx
-    const nz = isNS ? cz : cz + i
-    segments.push(`${nx}:${nz}:${dir}`)
-  }
-  return segments
 }
 
 function pruneInvalidConnectedProps(
@@ -677,6 +663,41 @@ export const useDungeonStore = create<DungeonState>()(
         placedObjects,
         occupancy,
         selection: id,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+
+    return true
+  },
+  setObjectProps: (id, props) => {
+    const state = get()
+    const object = state.placedObjects[id]
+    if (!object) {
+      return false
+    }
+
+    if (JSON.stringify(object.props) === JSON.stringify(props)) {
+      return true
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+
+    set((current) => {
+      const currentObject = current.placedObjects[id]
+      if (!currentObject) {
+        return current
+      }
+
+      return {
+        ...current,
+        placedObjects: {
+          ...current.placedObjects,
+          [id]: {
+            ...currentObject,
+            props: { ...props },
+          },
+        },
         history: [...current.history, previousSnapshot],
         future: [],
       }

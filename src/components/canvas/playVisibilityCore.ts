@@ -1,69 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import * as THREE from 'three'
-import { getContentPackAssetById } from '../../content-packs/registry'
 import { GRID_SIZE, getCellKey, type GridCell } from '../../hooks/useSnapToGrid'
 import { getOpeningSegments } from '../../store/openingSegments'
-import { useDungeonStore, type OpeningRecord, type PaintedCells } from '../../store/useDungeonStore'
-import type { DungeonObjectRecord, Layer } from '../../store/useDungeonStore'
-import { getRegisteredObject, useObjectRegistryVersion } from './objectRegistry'
+import type { OpeningRecord, PaintedCells } from '../../store/useDungeonStore'
 
-const PLAYER_VISION_RANGE = 8
 const MASK_BASE_SAMPLE_COUNT = 1024
 const MASK_ANGLE_EPSILON = 0.0001
 const MASK_DISTANCE_EPSILON = 0.0005
 const MASK_OPENING_INSET = GRID_SIZE * 0.22
 const LOS_BLOCKER_RAYCAST_Y = 0.38
 const EMPTY_EXPLORED_CELLS: Record<string, true> = {}
-
-type BlockerBroadPhase = {
-  minX: number
-  maxX: number
-  minZ: number
-  maxZ: number
-}
-
-type BlockerCandidate = {
-  triangles: number[]
-  broadPhase: BlockerBroadPhase | null
-}
-
-type BlockerCellEntry = {
-  hasRegisteredObject: boolean
-  candidates: BlockerCandidate[]
-}
-
-type BlockerLookupValue = BlockerCellEntry | string[]
-type BlockerLookup = Map<string, BlockerLookupValue>
-const blockerBounds = new THREE.Box3()
-
-type PlayVisibilityWorkerInput = {
-  paintedCells: PaintedCells
-  wallOpenings: Record<string, OpeningRecord>
-  origins: GridCell[]
-  range: number
-  blockingCellKeys: string[]
-  blockerLookupEntries: Array<[string, BlockerLookupValue]>
-}
-
-type PlayVisibilityComputation = {
-  visibleCellKeys: string[]
-  mask: PlayVisibilityMask | null
-}
-
-type PlayVisibilityWorkerResponse = {
-  requestId: number
-  result: PlayVisibilityComputation
-}
-
-export type PlayVisibilityState = 'visible' | 'explored' | 'hidden'
-
-export type PlayVisibility = {
-  active: boolean
-  getCellVisibility: (cellKey: string) => PlayVisibilityState
-  getObjectVisibility: (cellKey: string) => PlayVisibilityState
-  getWallVisibility: (wallKey: string) => PlayVisibilityState
-  mask: PlayVisibilityMask | null
-}
 
 export type VisibilityPolygon = Array<readonly [x: number, z: number]>
 
@@ -91,6 +35,38 @@ export type PlayVisibilityMask = {
   polygons: VisibilityPolygon[]
 }
 
+export type BlockerBroadPhase = {
+  minX: number
+  maxX: number
+  minZ: number
+  maxZ: number
+}
+
+export type BlockerCandidate = {
+  triangles: number[]
+  broadPhase: BlockerBroadPhase | null
+}
+
+export type BlockerCellEntry = {
+  hasRegisteredObject: boolean
+  candidates: BlockerCandidate[]
+}
+
+export type PlayVisibilityComputation = {
+  visibleCellKeys: string[]
+  mask: PlayVisibilityMask | null
+}
+
+export type PlayVisibilityWorkerInput = {
+  paintedCells: PaintedCells
+  wallOpenings: Record<string, OpeningRecord>
+  origins: GridCell[]
+  range: number
+  blockingCellKeys: string[]
+  blockerLookupEntries: Array<[string, BlockerCellEntry]>
+}
+
+type BlockerLookup = Map<string, BlockerCellEntry>
 type WallDirection = 'north' | 'south' | 'east' | 'west'
 
 type PortalSegment = {
@@ -107,136 +83,8 @@ const WALL_DIRECTIONS: Record<WallDirection, { delta: GridCell; opposite: WallDi
   west: { delta: [-1, 0], opposite: 'east' },
 }
 
-export function usePlayVisibility(): PlayVisibility {
-  const tool = useDungeonStore((state) => state.tool)
-  const paintedCells = useDungeonStore((state) => state.paintedCells)
-  const exploredCells = useDungeonStore((state) => state.exploredCells)
-  const wallOpenings = useDungeonStore((state) => state.wallOpenings)
-  const placedObjects = useDungeonStore((state) => state.placedObjects)
-  const layers = useDungeonStore((state) => state.layers)
-  const mergeExploredCells = useDungeonStore((state) => state.mergeExploredCells)
-  const objectRegistryVersion = useObjectRegistryVersion()
-
-  const workerInput = useMemo(() => {
-    if (tool !== 'play') {
-      return null
-    }
-    const playerOrigins = Object.values(placedObjects)
-      .filter((object) => isVisiblePlayerOrigin(object, paintedCells, layers))
-      .map((object) => object.cell)
-    const blockerLookup = getBlockingObjectIdsByCell(placedObjects, layers)
-    return {
-      paintedCells,
-      wallOpenings,
-      origins: playerOrigins,
-      range: PLAYER_VISION_RANGE,
-      blockingCellKeys: [...blockerLookup.keys()],
-      blockerLookupEntries: [...blockerLookup.entries()],
-    } satisfies PlayVisibilityWorkerInput
-  }, [layers, objectRegistryVersion, paintedCells, placedObjects, tool, wallOpenings])
-  const [visibilityData, setVisibilityData] = useState<PlayVisibilityComputation>({
-    visibleCellKeys: [],
-    mask: null,
-  })
-  const requestIdRef = useRef(0)
-  const worker = useMemo(
-    () =>
-      typeof Worker === 'undefined'
-        ? null
-        : new Worker(new URL('./playVisibility.worker.ts', import.meta.url), { type: 'module' }),
-    [],
-  )
-
-  useEffect(() => () => worker?.terminate(), [worker])
-
-  useEffect(() => {
-    if (!worker) {
-      return
-    }
-
-    const handleMessage = (event: MessageEvent<PlayVisibilityWorkerResponse>) => {
-      if (event.data.requestId !== requestIdRef.current) {
-        return
-      }
-      setVisibilityData(event.data.result)
-    }
-
-    worker.addEventListener('message', handleMessage)
-    return () => worker.removeEventListener('message', handleMessage)
-  }, [worker])
-
-  useEffect(() => {
-    if (tool !== 'play' || !workerInput) {
-      setVisibilityData({ visibleCellKeys: [], mask: null })
-      return
-    }
-
-    if (!worker) {
-      setVisibilityData(computePlayVisibilityData(workerInput))
-      return
-    }
-
-    const requestId = requestIdRef.current + 1
-    requestIdRef.current = requestId
-    worker.postMessage({ requestId, input: workerInput })
-  }, [tool, worker, workerInput])
-
-  const mask = useMemo(
-    () => withExploredCellKeys(visibilityData.mask, exploredCells),
-    [exploredCells, visibilityData.mask],
-  )
-
-  useEffect(() => {
-    if (tool === 'play') {
-      mergeExploredCells(visibilityData.visibleCellKeys)
-    }
-  }, [mergeExploredCells, tool, visibilityData.visibleCellKeys])
-
-  return useMemo(() => {
-    if (tool !== 'play') {
-      return {
-        active: false,
-        getCellVisibility: () => 'visible' as const,
-        getObjectVisibility: () => 'visible' as const,
-        getWallVisibility: () => 'visible' as const,
-        mask: null,
-      }
-    }
-
-    const visibleSet = new Set(visibilityData.visibleCellKeys)
-
-    const getCellVisibility = (cellKey: string): PlayVisibilityState => {
-      if (visibleSet.has(cellKey)) {
-        return 'visible'
-      }
-      if (exploredCells[cellKey]) {
-        return 'explored'
-      }
-      return 'hidden'
-    }
-
-    return {
-      active: true,
-      getCellVisibility,
-      getObjectVisibility: getCellVisibility,
-      mask,
-      getWallVisibility: (wallKey: string) => {
-        const parsed = parseWallKey(wallKey)
-        if (!parsed) {
-          return 'hidden'
-        }
-
-        const cellVisibility = getCellVisibility(parsed.cellKey)
-        const adjacentVisibility = getCellVisibility(parsed.neighborCellKey)
-
-        return maxVisibility(cellVisibility, adjacentVisibility)
-      },
-    }
-  }, [exploredCells, mask, tool, visibilityData.visibleCellKeys])
-}
-
 export function computePlayVisibilityData(input: PlayVisibilityWorkerInput): PlayVisibilityComputation {
-  const blockerLookup = new Map<string, BlockerLookupValue>(input.blockerLookupEntries)
+  const blockerLookup = new Map<string, BlockerCellEntry>(input.blockerLookupEntries)
   const blockingCells = new Set(input.blockingCellKeys)
   const visibleCellKeys = computeVisibleCellKeys(
     input.paintedCells,
@@ -257,32 +105,6 @@ export function computePlayVisibilityData(input: PlayVisibilityWorkerInput): Pla
   )
 
   return { visibleCellKeys, mask }
-}
-
-function withExploredCellKeys(
-  mask: PlayVisibilityMask | null,
-  exploredCells: Record<string, true>,
-): PlayVisibilityMask | null {
-  if (!mask) {
-    return null
-  }
-
-  return {
-    ...mask,
-    exploredCellKeys: Object.keys(exploredCells),
-  }
-}
-
-export function isVisiblePlayerOrigin(
-  object: DungeonObjectRecord,
-  paintedCells: PaintedCells,
-  layers: Record<string, Layer>,
-) {
-  return (
-    object.type === 'player' &&
-    layers[object.layerId]?.visible !== false &&
-    Boolean(paintedCells[getCellKey(object.cell)])
-  )
 }
 
 export function computeVisibleCellKeys(
@@ -385,28 +207,12 @@ function hasLineOfSight(
       const nextDiagonal: GridCell = [current[0] + stepX, current[1] + stepZ]
       const viaX: GridCell = [current[0] + stepX, current[1]]
       const viaZ: GridCell = [current[0], current[1] + stepZ]
-      const canPassViaX = canTraverseAdjacent(
-        current,
-        viaX,
-        paintedCells,
-        openWalls,
-      ) && !isBlockingSightCell(viaX, target, blockingCells, blockerLookup, originPoint, targetPoint) && canTraverseAdjacent(
-        viaX,
-        nextDiagonal,
-        paintedCells,
-        openWalls,
-      )
-      const canPassViaZ = canTraverseAdjacent(
-        current,
-        viaZ,
-        paintedCells,
-        openWalls,
-      ) && !isBlockingSightCell(viaZ, target, blockingCells, blockerLookup, originPoint, targetPoint) && canTraverseAdjacent(
-        viaZ,
-        nextDiagonal,
-        paintedCells,
-        openWalls,
-      )
+      const canPassViaX = canTraverseAdjacent(current, viaX, paintedCells, openWalls)
+        && !isBlockingSightCell(viaX, target, blockingCells, blockerLookup, originPoint, targetPoint)
+        && canTraverseAdjacent(viaX, nextDiagonal, paintedCells, openWalls)
+      const canPassViaZ = canTraverseAdjacent(current, viaZ, paintedCells, openWalls)
+        && !isBlockingSightCell(viaZ, target, blockingCells, blockerLookup, originPoint, targetPoint)
+        && canTraverseAdjacent(viaZ, nextDiagonal, paintedCells, openWalls)
 
       if (!canPassViaX && !canPassViaZ) {
         return false
@@ -477,7 +283,6 @@ function canTraverseAdjacent(
 function getDirection(from: GridCell, to: GridCell): WallDirection | null {
   const dx = to[0] - from[0]
   const dz = to[1] - from[1]
-
   if (dx === 1 && dz === 0) return 'east'
   if (dx === -1 && dz === 0) return 'west'
   if (dx === 0 && dz === 1) return 'north'
@@ -492,35 +297,18 @@ function parseWallKey(wallKey: string) {
   if (!Number.isFinite(x) || !Number.isFinite(z)) {
     return null
   }
-
-  if (
-    directionText !== 'north' &&
-    directionText !== 'south' &&
-    directionText !== 'east' &&
-    directionText !== 'west'
-  ) {
+  if (directionText !== 'north' && directionText !== 'south' && directionText !== 'east' && directionText !== 'west') {
     return null
   }
 
   const direction = WALL_DIRECTIONS[directionText]
   const cellKey = `${x}:${z}`
   const neighborCellKey = `${x + direction.delta[0]}:${z + direction.delta[1]}`
-
   return {
     cellKey,
     neighborCellKey,
     mirroredWallKey: `${neighborCellKey}:${direction.opposite}`,
   }
-}
-
-function maxVisibility(a: PlayVisibilityState, b: PlayVisibilityState): PlayVisibilityState {
-  if (a === 'visible' || b === 'visible') {
-    return 'visible'
-  }
-  if (a === 'explored' || b === 'explored') {
-    return 'explored'
-  }
-  return 'hidden'
 }
 
 function approximatelyEqual(a: number, b: number) {
@@ -568,17 +356,13 @@ export function computeVisibilityMask(
       }
 
       return {
-        origin: [
-          (origin[0] + 0.5) * GRID_SIZE,
-          (origin[1] + 0.5) * GRID_SIZE,
-        ] as const,
+        origin: [(origin[0] + 0.5) * GRID_SIZE, (origin[1] + 0.5) * GRID_SIZE] as const,
         polygon,
         sectors,
       }
     })
     .filter((source): source is VisibilitySource => source !== null)
   const polygons = sources.flatMap((source) => source.sectors)
-
   const cells = Object.values(paintedCells)
   const minCellX = Math.min(...cells.map((record) => record.cell[0]))
   const maxCellX = Math.max(...cells.map((record) => record.cell[0]))
@@ -648,7 +432,6 @@ function splitVisibilityPolygonIntoSectors(
     (originCell[1] + 0.5) * GRID_SIZE,
   ]
   const breaks = new Set<number>()
-
   for (let index = 0; index < samples.length; index += 1) {
     const current = samples[index]
     const next = samples[(index + 1) % samples.length]
@@ -676,11 +459,9 @@ function splitVisibilityPolygonIntoSectors(
   const sectors: VisibilityPolygon[] = []
   const startIndex = (([...breaks][0] ?? 0) + 1) % samples.length
   let currentSector: VisibilityPolygon = []
-
   for (let offset = 0; offset < samples.length; offset += 1) {
     const index = (startIndex + offset) % samples.length
     currentSector.push(samples[index].point)
-
     if (breaks.has(index)) {
       if (currentSector.length >= 3) {
         sectors.push(currentSector)
@@ -688,11 +469,9 @@ function splitVisibilityPolygonIntoSectors(
       currentSector = []
     }
   }
-
   if (currentSector.length >= 3) {
     sectors.push(currentSector)
   }
-
   return sectors
 }
 
@@ -711,7 +490,6 @@ function shouldSplitVisibilitySector(
   if (angleDelta <= MASK_ANGLE_EPSILON * 4) {
     return false
   }
-
   const midpointAngle = normalizeAngle(left.angle + angleDelta * 0.5)
   const midpoint = castVisibilityMaskRayWithLookup(
     originCell,
@@ -723,13 +501,8 @@ function shouldSplitVisibilitySector(
     maxDistance,
     blockerLookup,
   )
-
   const midpointDistance = pointDistance(origin, midpoint)
-  const edgeDistance = Math.min(
-    pointDistance(origin, left.point),
-    pointDistance(origin, right.point),
-  )
-
+  const edgeDistance = Math.min(pointDistance(origin, left.point), pointDistance(origin, right.point))
   return midpointDistance + GRID_SIZE * 0.35 < edgeDistance
 }
 
@@ -837,7 +610,7 @@ function castVisibilityMaskRayWithLookup(
 
       current = nextCell
       const nextTMaxX = tMaxX + tDeltaX
-      const horizontalHitDistance = getBlockingRayHitDistance(
+      const hitDistance = getBlockingRayHitDistance(
         current,
         originCell,
         origin,
@@ -847,8 +620,8 @@ function castVisibilityMaskRayWithLookup(
         blockingCells,
         blockerLookup,
       )
-      if (horizontalHitDistance !== null) {
-        return pointAtDistance(origin, direction, horizontalHitDistance)
+      if (hitDistance !== null) {
+        return pointAtDistance(origin, direction, hitDistance)
       }
 
       tMaxX = nextTMaxX
@@ -864,7 +637,7 @@ function castVisibilityMaskRayWithLookup(
 
     current = nextCell
     const nextTMaxZ = tMaxZ + tDeltaZ
-    const verticalHitDistance = getBlockingRayHitDistance(
+    const hitDistance = getBlockingRayHitDistance(
       current,
       originCell,
       origin,
@@ -874,10 +647,9 @@ function castVisibilityMaskRayWithLookup(
       blockingCells,
       blockerLookup,
     )
-    if (verticalHitDistance !== null) {
-      return pointAtDistance(origin, direction, verticalHitDistance)
+    if (hitDistance !== null) {
+      return pointAtDistance(origin, direction, hitDistance)
     }
-
     tMaxZ = nextTMaxZ
   }
 
@@ -894,14 +666,12 @@ function buildMaskAngles(
     (index / MASK_BASE_SAMPLE_COUNT) * Math.PI * 2,
   )
   const seenPortals = new Set<string>()
-
   for (const portal of portalLookup.values()) {
     const key = `${portal.orientation}:${portal.fixed}:${portal.min}:${portal.max}`
     if (seenPortals.has(key)) {
       continue
     }
     seenPortals.add(key)
-
     const endpoints =
       portal.orientation === 'horizontal'
         ? [
@@ -912,12 +682,10 @@ function buildMaskAngles(
             [portal.fixed, portal.min],
             [portal.fixed, portal.max],
           ]
-
     for (const endpoint of endpoints) {
       addEdgeAngles(angles, origin, endpoint as [number, number], maxDistance)
     }
   }
-
   for (const cellKey of blockingCells) {
     const [xText, zText] = cellKey.split(':')
     const cellX = Number.parseInt(xText ?? '', 10)
@@ -925,7 +693,6 @@ function buildMaskAngles(
     if (!Number.isFinite(cellX) || !Number.isFinite(cellZ)) {
       continue
     }
-
     const minX = cellX * GRID_SIZE
     const maxX = (cellX + 1) * GRID_SIZE
     const minZ = cellZ * GRID_SIZE
@@ -935,7 +702,6 @@ function buildMaskAngles(
     addEdgeAngles(angles, origin, [maxX, minZ], maxDistance)
     addEdgeAngles(angles, origin, [maxX, maxZ], maxDistance)
   }
-
   return angles
 }
 
@@ -950,14 +716,12 @@ function addEdgeAngles(
   if (dx * dx + dz * dz > maxDistance * maxDistance) {
     return
   }
-
   const angle = Math.atan2(dz, dx)
   angles.push(angle - MASK_ANGLE_EPSILON, angle, angle + MASK_ANGLE_EPSILON)
 }
 
 export function buildPortalLookup(wallOpenings: Record<string, OpeningRecord>) {
   const lookup = new Map<string, PortalSegment>()
-
   for (const opening of Object.values(wallOpenings)) {
     const portal = getOpeningPortalSegment(opening.wallKey, opening.width)
     for (const wallKey of getOpeningSegments(opening.wallKey, opening.width)) {
@@ -968,7 +732,6 @@ export function buildPortalLookup(wallOpenings: Record<string, OpeningRecord>) {
       }
     }
   }
-
   return lookup
 }
 
@@ -1009,13 +772,8 @@ function normalizePortalSegment(portal: PortalSegment): PortalSegment {
   if (portal.max - portal.min >= 0.1) {
     return portal
   }
-
   const midpoint = (portal.min + portal.max) * 0.5
-  return {
-    ...portal,
-    min: midpoint - 0.05,
-    max: midpoint + 0.05,
-  }
+  return { ...portal, min: midpoint - 0.05, max: midpoint + 0.05 }
 }
 
 function canTraverseRayBoundary(
@@ -1029,7 +787,6 @@ function canTraverseRayBoundary(
   if (!direction) {
     return false
   }
-
   const fromKey = getCellKey(from)
   const toKey = getCellKey(to)
   const fromRecord = paintedCells[fromKey]
@@ -1037,17 +794,11 @@ function canTraverseRayBoundary(
   if (!fromRecord || !toRecord) {
     return false
   }
-
   if ((fromRecord.roomId ?? null) === (toRecord.roomId ?? null)) {
     return true
   }
-
   const portal = portalLookup.get(`${fromKey}:${direction}`)
-  if (!portal) {
-    return false
-  }
-
-  return pointPassesPortal(crossPoint, portal)
+  return portal ? pointPassesPortal(crossPoint, portal) : false
 }
 
 function pointPassesPortal(point: readonly [number, number], portal: PortalSegment) {
@@ -1060,16 +811,10 @@ function pointAtDistance(
   direction: readonly [number, number],
   distance: number,
 ): readonly [number, number] {
-  return [
-    origin[0] + direction[0] * distance,
-    origin[1] + direction[1] * distance,
-  ]
+  return [origin[0] + direction[0] * distance, origin[1] + direction[1] * distance]
 }
 
-function pointDistance(
-  left: readonly [number, number],
-  right: readonly [number, number],
-) {
+function pointDistance(left: readonly [number, number], right: readonly [number, number]) {
   return Math.hypot(right[0] - left[0], right[1] - left[1])
 }
 
@@ -1083,137 +828,8 @@ function normalizeAngleDelta(angle: number) {
   return normalized <= 0 ? normalized + Math.PI * 2 : normalized
 }
 
-function isMaskBlockingCell(
-  cell: GridCell,
-  originCell: GridCell,
-  blockingCells: Set<string>,
-) {
+function isMaskBlockingCell(cell: GridCell, originCell: GridCell, blockingCells: Set<string>) {
   return (cell[0] !== originCell[0] || cell[1] !== originCell[1]) && blockingCells.has(getCellKey(cell))
-}
-
-function getBlockingObjectIdsByCell(
-  placedObjects: Record<string, DungeonObjectRecord>,
-  layers: Record<string, Layer>,
-): BlockerLookup {
-  const blockingCells = new Map<string, string[]>()
-
-  for (const object of Object.values(placedObjects)) {
-    if (layers[object.layerId]?.visible === false) {
-      continue
-    }
-
-    const asset = object.assetId ? getContentPackAssetById(object.assetId) : null
-    if (!asset?.metadata?.blocksLineOfSight || asset.metadata.connectsTo !== 'FLOOR') {
-      continue
-    }
-
-    const cellKey = getCellKey(object.cell)
-    const ids = blockingCells.get(cellKey)
-    if (ids) {
-      ids.push(object.id)
-    } else {
-      blockingCells.set(cellKey, [object.id])
-    }
-  }
-
-  return new Map(
-    [...blockingCells.entries()].map(([cellKey, ids]) => [
-      cellKey,
-      buildBlockerCellEntry(ids),
-    ]),
-  )
-}
-
-function buildBlockerCellEntry(blockerIds: string[]): BlockerCellEntry {
-  const candidates: BlockerCandidate[] = []
-  let hasRegisteredObject = false
-
-  for (const blockerId of blockerIds) {
-    const blocker = getRegisteredObject(blockerId)
-    if (!blocker) {
-      continue
-    }
-
-    hasRegisteredObject = true
-    blocker.updateWorldMatrix(true, true)
-    const candidate = buildBlockerCandidate(blocker)
-    if (candidate) {
-      candidates.push(candidate)
-    }
-  }
-
-  return { hasRegisteredObject, candidates }
-}
-
-function buildBlockerCandidate(blocker: THREE.Object3D): BlockerCandidate | null {
-  const triangles: number[] = []
-  let broadPhase: BlockerBroadPhase | null = null
-  const vertexA = new THREE.Vector3()
-  const vertexB = new THREE.Vector3()
-  const vertexC = new THREE.Vector3()
-
-  blocker.traverse((node) => {
-    if (!isLosSolidMesh(node, blocker)) {
-      return
-    }
-
-    const mesh = node as THREE.Mesh
-    const geometry = mesh.geometry
-    const positions = geometry.getAttribute('position')
-    if (!positions) {
-      return
-    }
-    const index = geometry.getIndex()
-    const triangleCount = index ? index.count / 3 : positions.count / 3
-    if (!Number.isFinite(triangleCount) || triangleCount <= 0) {
-      return
-    }
-
-    if (!geometry.boundingBox) {
-      geometry.computeBoundingBox()
-    }
-    if (geometry.boundingBox) {
-      blockerBounds.copy(geometry.boundingBox).applyMatrix4(node.matrixWorld)
-    }
-
-    for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
-      const indexOffset = triangleIndex * 3
-      const vertexIndexA = index ? index.getX(indexOffset) : indexOffset
-      const vertexIndexB = index ? index.getX(indexOffset + 1) : indexOffset + 1
-      const vertexIndexC = index ? index.getX(indexOffset + 2) : indexOffset + 2
-      vertexA.fromBufferAttribute(positions, vertexIndexA).applyMatrix4(node.matrixWorld)
-      vertexB.fromBufferAttribute(positions, vertexIndexB).applyMatrix4(node.matrixWorld)
-      vertexC.fromBufferAttribute(positions, vertexIndexC).applyMatrix4(node.matrixWorld)
-
-      triangles.push(
-        vertexA.x, vertexA.y, vertexA.z,
-        vertexB.x, vertexB.y, vertexB.z,
-        vertexC.x, vertexC.y, vertexC.z,
-      )
-
-      const minY = Math.min(vertexA.y, vertexB.y, vertexC.y)
-      const maxY = Math.max(vertexA.y, vertexB.y, vertexC.y)
-      if (maxY < LOS_BLOCKER_RAYCAST_Y || minY > LOS_BLOCKER_RAYCAST_Y) {
-        continue
-      }
-
-      const minX = Math.min(vertexA.x, vertexB.x, vertexC.x)
-      const maxX = Math.max(vertexA.x, vertexB.x, vertexC.x)
-      const minZ = Math.min(vertexA.z, vertexB.z, vertexC.z)
-      const maxZ = Math.max(vertexA.z, vertexB.z, vertexC.z)
-
-      if (broadPhase) {
-        broadPhase.minX = Math.min(broadPhase.minX, minX)
-        broadPhase.maxX = Math.max(broadPhase.maxX, maxX)
-        broadPhase.minZ = Math.min(broadPhase.minZ, minZ)
-        broadPhase.maxZ = Math.max(broadPhase.maxZ, maxZ)
-      } else {
-        broadPhase = { minX, maxX, minZ, maxZ }
-      }
-    }
-  })
-
-  return triangles.length > 0 ? { triangles, broadPhase } : null
 }
 
 function isBlockingSightCell(
@@ -1227,27 +843,20 @@ function isBlockingSightCell(
   if (cell[0] === target[0] && cell[1] === target[1]) {
     return false
   }
-
   const cellKey = getCellKey(cell)
   if (!blockingCells.has(cellKey)) {
     return false
   }
-
-  const blockerEntry = getBlockerCellEntry(blockerLookup.get(cellKey))
+  const blockerEntry = blockerLookup.get(cellKey)
   if (!blockerEntry) {
     return true
   }
-
   const hitDistance = getBlockingMeshHitDistance(
     blockerEntry,
     originPoint,
-    normalizeDirection([
-      targetPoint[0] - originPoint[0],
-      targetPoint[1] - originPoint[1],
-    ]),
+    normalizeDirection([targetPoint[0] - originPoint[0], targetPoint[1] - originPoint[1]]),
     pointDistance(originPoint, targetPoint),
   )
-
   return hitDistance !== null
 }
 
@@ -1264,21 +873,13 @@ function getBlockingRayHitDistance(
   if (!isMaskBlockingCell(cell, originCell, blockingCells)) {
     return null
   }
-
-  const blockerEntry = getBlockerCellEntry(blockerLookup.get(getCellKey(cell)))
-  const hitDistance = getBlockingMeshHitDistance(
-    blockerEntry,
-    origin,
-    direction,
-    exitDistance,
-  )
-
+  const blockerEntry = blockerLookup.get(getCellKey(cell))
+  const hitDistance = getBlockingMeshHitDistance(blockerEntry, origin, direction, exitDistance)
   if (hitDistance === null) {
     return blockerEntry?.hasRegisteredObject
       ? null
       : Math.min(exitDistance, entryDistance + (exitDistance - entryDistance) * 0.5)
   }
-
   return hitDistance >= Math.max(0, entryDistance - MASK_DISTANCE_EPSILON) ? hitDistance : null
 }
 
@@ -1291,34 +892,22 @@ function getBlockingMeshHitDistance(
   if (!blockerEntry || maxDistance <= 0) {
     return null
   }
-
   let nearestHitDistance: number | null = null
-
   for (const candidate of blockerEntry.candidates) {
     if (!candidate.broadPhase) {
       continue
     }
-
     if (!rayIntersectsBlockerBroadPhase(origin, direction, maxDistance, candidate.broadPhase)) {
       continue
     }
-
     const hitDistance = getNearestTriangleHitDistance(candidate.triangles, origin, direction, maxDistance)
     if (hitDistance === null) {
       continue
     }
-
     nearestHitDistance =
-      nearestHitDistance === null
-        ? hitDistance
-        : Math.min(nearestHitDistance, hitDistance)
+      nearestHitDistance === null ? hitDistance : Math.min(nearestHitDistance, hitDistance)
   }
-
-  if (nearestHitDistance !== null) {
-    return nearestHitDistance
-  }
-
-  return blockerEntry.hasRegisteredObject ? null : maxDistance * 0.5
+  return nearestHitDistance ?? (blockerEntry.hasRegisteredObject ? null : maxDistance * 0.5)
 }
 
 function getNearestTriangleHitDistance(
@@ -1330,19 +919,15 @@ function getNearestTriangleHitDistance(
   const originX = origin[0]
   const originY = LOS_BLOCKER_RAYCAST_Y
   const originZ = origin[1]
-  const directionX = direction[0]
-  const directionY = 0
-  const directionZ = direction[1]
   let nearestHitDistance: number | null = null
-
   for (let index = 0; index < triangles.length; index += 9) {
     const hitDistance = intersectRayWithTriangle(
       originX,
       originY,
       originZ,
-      directionX,
-      directionY,
-      directionZ,
+      direction[0],
+      0,
+      direction[1],
       triangles[index] ?? 0,
       triangles[index + 1] ?? 0,
       triangles[index + 2] ?? 0,
@@ -1356,11 +941,9 @@ function getNearestTriangleHitDistance(
     if (hitDistance === null || hitDistance > maxDistance) {
       continue
     }
-
     nearestHitDistance =
       nearestHitDistance === null ? hitDistance : Math.min(nearestHitDistance, hitDistance)
   }
-
   return nearestHitDistance
 }
 
@@ -1394,7 +977,6 @@ function intersectRayWithTriangle(
   if (Math.abs(determinant) <= 0.000001) {
     return null
   }
-
   const inverseDeterminant = 1 / determinant
   const tVecX = originX - ax
   const tVecY = originY - ay
@@ -1403,7 +985,6 @@ function intersectRayWithTriangle(
   if (u < 0 || u > 1) {
     return null
   }
-
   const qX = tVecY * edge1Z - tVecZ * edge1Y
   const qY = tVecZ * edge1X - tVecX * edge1Z
   const qZ = tVecX * edge1Y - tVecY * edge1X
@@ -1411,36 +992,8 @@ function intersectRayWithTriangle(
   if (v < 0 || u + v > 1) {
     return null
   }
-
   const distance = (edge2X * qX + edge2Y * qY + edge2Z * qZ) * inverseDeterminant
   return distance >= 0 ? distance : null
-}
-
-function getBlockerCellEntry(value: BlockerLookupValue | undefined): BlockerCellEntry | undefined {
-  if (!value) {
-    return undefined
-  }
-
-  return Array.isArray(value) ? buildBlockerCellEntry(value) : value
-}
-
-function isLosSolidMesh(object: THREE.Object3D, blockerRoot: THREE.Object3D) {
-  if (!(object as THREE.Mesh).isMesh) {
-    return false
-  }
-
-  let current: THREE.Object3D | null = object
-  while (current) {
-    if (current.userData.ignoreLosRaycast === true) {
-      return false
-    }
-    if (current === blockerRoot) {
-      break
-    }
-    current = current.parent
-  }
-
-  return true
 }
 
 function rayIntersectsBlockerBroadPhase(
@@ -1451,7 +1004,6 @@ function rayIntersectsBlockerBroadPhase(
 ) {
   let entryDistance = 0
   let exitDistance = maxDistance
-
   if (
     !intersectRayAxis(origin[0], direction[0], broadPhase.minX, broadPhase.maxX, {
       entryDistanceRef: (value) => {
@@ -1464,7 +1016,6 @@ function rayIntersectsBlockerBroadPhase(
   ) {
     return false
   }
-
   if (
     !intersectRayAxis(origin[1], direction[1], broadPhase.minZ, broadPhase.maxZ, {
       entryDistanceRef: (value) => {
@@ -1477,7 +1028,6 @@ function rayIntersectsBlockerBroadPhase(
   ) {
     return false
   }
-
   return exitDistance >= entryDistance && exitDistance >= 0
 }
 
@@ -1494,23 +1044,15 @@ function intersectRayAxis(
   if (Math.abs(direction) <= 0.000001) {
     return origin >= min && origin <= max
   }
-
   const inverseDirection = 1 / direction
   const distanceA = (min - origin) * inverseDirection
   const distanceB = (max - origin) * inverseDirection
-  const entryDistance = Math.min(distanceA, distanceB)
-  const exitDistance = Math.max(distanceA, distanceB)
-
-  ranges.entryDistanceRef(entryDistance)
-  ranges.exitDistanceRef(exitDistance)
+  ranges.entryDistanceRef(Math.min(distanceA, distanceB))
+  ranges.exitDistanceRef(Math.max(distanceA, distanceB))
   return true
 }
 
 function normalizeDirection(direction: readonly [number, number]): readonly [number, number] {
   const length = Math.hypot(direction[0], direction[1])
-  if (length <= 0.000001) {
-    return [1, 0]
-  }
-
-  return [direction[0] / length, direction[1] / length]
+  return length <= 0.000001 ? [1, 0] : [direction[0] / length, direction[1] / length]
 }

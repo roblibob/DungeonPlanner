@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useDungeonStore, getOpeningSegments } from './useDungeonStore'
+import { useDungeonStore } from './useDungeonStore'
+import { getOpeningSegments } from './openingSegments'
 
 describe('useDungeonStore history', () => {
   beforeEach(() => {
@@ -61,6 +62,35 @@ describe('useDungeonStore history', () => {
     expect(state.selection).toBe(placedId)
     expect(state.occupancy['0:0:floor']).toBe(placedId)
     expect(state.placedObjects[placedId!]?.type).toBe('player')
+  })
+
+  it('updates object props and records the change in history', () => {
+    useDungeonStore.getState().paintCells([[0, 0]])
+
+    const placedId = useDungeonStore.getState().placeObject({
+      type: 'prop',
+      assetId: 'core.props_wall_torch',
+      position: [1, 0.45, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'WALL', direction: 'north' },
+      cell: [0, 0],
+      cellKey: '0:0:north',
+    })
+
+    const updated = useDungeonStore.getState().setObjectProps(placedId!, {
+      connector: 'WALL',
+      direction: 'north',
+      lit: false,
+    })
+
+    const state = useDungeonStore.getState()
+    expect(updated).toBe(true)
+    expect(state.placedObjects[placedId!]?.props).toEqual({
+      connector: 'WALL',
+      direction: 'north',
+      lit: false,
+    })
+    expect(state.history.length).toBeGreaterThan(0)
   })
 
   it('moves a player to another painted floor cell without changing its id', () => {

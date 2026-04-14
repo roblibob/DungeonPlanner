@@ -10,6 +10,33 @@ const DEBUG_VISIBLE_STROKE = 'rgba(74, 222, 128, 0.8)'
 const PIXELS_PER_CELL = 128
 const MAX_TEXTURE_SIZE = 4096
 const FLOOR_MASK_Y = 0.34
+const EDGE_FEATHER_CELLS = 0.14
+
+type OffscreenBuffers = {
+  hiddenCanvas: HTMLCanvasElement
+  exploredCanvas: HTMLCanvasElement
+  shapeCanvas: HTMLCanvasElement
+  blurredCanvas: HTMLCanvasElement
+  hiddenLayerState: {
+    bounds: PlayVisibilityMaskData['bounds'] | null
+    cellKeys: string[] | null
+    width: number
+    height: number
+  }
+  exploredLayerState: {
+    bounds: PlayVisibilityMaskData['bounds'] | null
+    cellKeys: string[] | null
+    width: number
+    height: number
+  }
+  cutoutLayerState: {
+    bounds: PlayVisibilityMaskData['bounds'] | null
+    sources: PlayVisibilityMaskData['sources'] | null
+    width: number
+    height: number
+    featherPixels: number
+  }
+}
 
 export function PlayVisibilityMask({
   mask,
@@ -19,6 +46,18 @@ export function PlayVisibilityMask({
   mode?: 'occlusion' | 'debug'
 }) {
   const canvas = useMemo(() => document.createElement('canvas'), [])
+  const offscreenBuffers = useMemo<OffscreenBuffers>(
+    () => ({
+      hiddenCanvas: document.createElement('canvas'),
+      exploredCanvas: document.createElement('canvas'),
+      shapeCanvas: document.createElement('canvas'),
+      blurredCanvas: document.createElement('canvas'),
+      hiddenLayerState: { bounds: null, cellKeys: null, width: 0, height: 0 },
+      exploredLayerState: { bounds: null, cellKeys: null, width: 0, height: 0 },
+      cutoutLayerState: { bounds: null, sources: null, width: 0, height: 0, featherPixels: -1 },
+    }),
+    [],
+  )
   const texture = useMemo(() => {
     const nextTexture = new THREE.CanvasTexture(canvas)
     nextTexture.colorSpace = THREE.SRGBColorSpace
@@ -47,19 +86,33 @@ export function PlayVisibilityMask({
     context.clearRect(0, 0, canvas.width, canvas.height)
 
     if (mode === 'occlusion') {
-      for (const cellKey of mask.paintedCellKeys) {
-        fillCell(context, cellKey, mask.bounds, canvas, HIDDEN_FILL)
-      }
+      const hiddenCanvas = drawCachedCellLayer(
+        offscreenBuffers.hiddenCanvas,
+        offscreenBuffers.hiddenLayerState,
+        mask.bounds,
+        mask.paintedCellKeys,
+        canvas,
+        HIDDEN_FILL,
+      )
+      const exploredCanvas = drawCachedCellLayer(
+        offscreenBuffers.exploredCanvas,
+        offscreenBuffers.exploredLayerState,
+        mask.bounds,
+        mask.exploredCellKeys,
+        canvas,
+        EXPLORED_FILL,
+      )
 
-      for (const cellKey of mask.exploredCellKeys) {
-        fillCell(context, cellKey, mask.bounds, canvas, EXPLORED_FILL)
-      }
+      context.drawImage(hiddenCanvas, 0, 0)
+      context.drawImage(exploredCanvas, 0, 0)
 
-      context.save()
-      context.globalCompositeOperation = 'destination-out'
-      context.fillStyle = '#000000'
-      drawSourceShapes(context, mask, canvas)
-      context.restore()
+      const cutoutCanvas = drawOcclusionCutout(mask, canvas, pixelsPerCell, offscreenBuffers)
+      if (cutoutCanvas) {
+        context.save()
+        context.globalCompositeOperation = 'destination-out'
+        context.drawImage(cutoutCanvas, 0, 0)
+        context.restore()
+      }
     } else {
       context.save()
       context.fillStyle = DEBUG_VISIBLE_FILL
@@ -70,7 +123,7 @@ export function PlayVisibilityMask({
     }
 
     texture.needsUpdate = true
-  }, [canvas, mask, mode, texture])
+  }, [canvas, mask, mode, offscreenBuffers, texture])
 
   useEffect(() => () => texture.dispose(), [texture])
 
@@ -100,6 +153,122 @@ export function PlayVisibilityMask({
       />
     </mesh>
   )
+}
+
+function drawCachedCellLayer(
+  targetCanvas: HTMLCanvasElement,
+  layerState: {
+    bounds: PlayVisibilityMaskData['bounds'] | null
+    cellKeys: string[] | null
+    width: number
+    height: number
+  },
+  bounds: PlayVisibilityMaskData['bounds'],
+  cellKeys: string[],
+  canvas: HTMLCanvasElement,
+  fillStyle: string,
+) {
+  const resized = resizeCanvas(targetCanvas, canvas.width, canvas.height)
+  const shouldRedraw =
+    resized ||
+    layerState.bounds !== bounds ||
+    layerState.cellKeys !== cellKeys ||
+    layerState.width !== canvas.width ||
+    layerState.height !== canvas.height
+
+  if (!shouldRedraw) {
+    return targetCanvas
+  }
+
+  const context = targetCanvas.getContext('2d')
+  if (!context) {
+    return targetCanvas
+  }
+
+  context.clearRect(0, 0, targetCanvas.width, targetCanvas.height)
+  for (const cellKey of cellKeys) {
+    fillCell(context, cellKey, bounds, targetCanvas, fillStyle)
+  }
+
+  layerState.bounds = bounds
+  layerState.cellKeys = cellKeys
+  layerState.width = canvas.width
+  layerState.height = canvas.height
+  return targetCanvas
+}
+
+function drawOcclusionCutout(
+  mask: PlayVisibilityMaskData,
+  canvas: HTMLCanvasElement,
+  pixelsPerCell: number,
+  offscreenBuffers: OffscreenBuffers,
+) {
+  const featherPixels = Math.max(2, Math.round(pixelsPerCell * EDGE_FEATHER_CELLS))
+  const { shapeCanvas, blurredCanvas, cutoutLayerState } = offscreenBuffers
+  const shapeResized = resizeCanvas(shapeCanvas, canvas.width, canvas.height)
+  const blurredResized = resizeCanvas(blurredCanvas, canvas.width, canvas.height)
+  const shouldRedraw =
+    shapeResized ||
+    blurredResized ||
+    cutoutLayerState.bounds !== mask.bounds ||
+    cutoutLayerState.sources !== mask.sources ||
+    cutoutLayerState.width !== canvas.width ||
+    cutoutLayerState.height !== canvas.height ||
+    cutoutLayerState.featherPixels !== featherPixels
+
+  if (!shouldRedraw) {
+    return featherPixels <= 0 ? shapeCanvas : blurredCanvas
+  }
+
+  const shapeContext = shapeCanvas.getContext('2d')
+  if (!shapeContext) {
+    return null
+  }
+
+  shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height)
+  shapeContext.fillStyle = '#000000'
+  drawSourceShapes(shapeContext, mask, shapeCanvas)
+
+  if (featherPixels <= 0) {
+    cutoutLayerState.bounds = mask.bounds
+    cutoutLayerState.sources = mask.sources
+    cutoutLayerState.width = canvas.width
+    cutoutLayerState.height = canvas.height
+    cutoutLayerState.featherPixels = featherPixels
+    return shapeCanvas
+  }
+
+  const blurredContext = blurredCanvas.getContext('2d')
+  if (!blurredContext) {
+    cutoutLayerState.bounds = mask.bounds
+    cutoutLayerState.sources = mask.sources
+    cutoutLayerState.width = canvas.width
+    cutoutLayerState.height = canvas.height
+    cutoutLayerState.featherPixels = featherPixels
+    return shapeCanvas
+  }
+
+  blurredContext.clearRect(0, 0, blurredCanvas.width, blurredCanvas.height)
+  blurredContext.filter = `blur(${featherPixels}px)`
+  blurredContext.drawImage(shapeCanvas, 0, 0)
+  blurredContext.filter = 'none'
+
+  cutoutLayerState.bounds = mask.bounds
+  cutoutLayerState.sources = mask.sources
+  cutoutLayerState.width = canvas.width
+  cutoutLayerState.height = canvas.height
+  cutoutLayerState.featherPixels = featherPixels
+  return blurredCanvas
+}
+
+function resizeCanvas(canvas: HTMLCanvasElement, width: number, height: number) {
+  if (canvas.width === width && canvas.height === height) {
+    return false
+  }
+
+  canvas.width = width
+  canvas.height = height
+  return true
 }
 
 function drawSourceShapes(

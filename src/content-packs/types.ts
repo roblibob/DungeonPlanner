@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 export type ContentPackCategory = 'floor' | 'wall' | 'prop' | 'opening' | 'player'
 export type ContentPackComponentProps = JSX.IntrinsicElements['group'] & {
   variantKey?: string
+  objectProps?: Record<string, unknown>
 }
 export type PropConnector = 'FLOOR' | 'WALL' | 'WALLFLOOR'
 
@@ -38,6 +39,8 @@ export type ContentPackAsset = {
   assetUrl: string
   Component: ComponentType<ContentPackComponentProps>
   metadata?: ContentPackAssetMetadata
+  getLight?: (objectProps: Record<string, unknown>) => PropLight | null
+  getPlayModeNextProps?: (objectProps: Record<string, unknown>) => Record<string, unknown> | null
 }
 
 export type ContentPack = {
