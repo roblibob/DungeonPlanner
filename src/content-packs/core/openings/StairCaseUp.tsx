@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import propsStairCaseUpAssetUrl from '../../../assets/models/core/staircase.glb'
+import propsStairCaseUpThumbnailUrl from '../../../assets/models/core/staircase.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 // Adjust this to compensate for the authored pivot of the prop.
@@ -28,6 +29,7 @@ export const propsStairCaseUpAsset: ContentPackAsset = {
   name: 'Staircase Up',
   category: 'opening',
   assetUrl: propsStairCaseUpAssetUrl,
+  thumbnailUrl: propsStairCaseUpThumbnailUrl,
   Component: PropsStairCaseUp,
   metadata: {
     connectsTo: 'FLOOR',

@@ -1,4 +1,4 @@
-import { readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 import process from 'node:process'
@@ -11,14 +11,22 @@ const baseUrl = `http://${host}:${port}`
 const viewportSize = 320
 
 async function main() {
-  const { targetDir, filter } = parseArgs(process.argv.slice(2))
-  const glbFiles = readdirSync(targetDir)
+  const { targetDir, filter, missingOnly } = parseArgs(process.argv.slice(2))
+  const allGlbFiles = readdirSync(targetDir)
     .filter((file) => file.endsWith('.glb'))
     .filter((file) => !filter || file.includes(filter))
     .sort((left, right) => left.localeCompare(right))
+  const glbFiles = missingOnly
+    ? allGlbFiles.filter((file) => shouldGenerateThumbnail(targetDir, file))
+    : allGlbFiles
+
+  if (allGlbFiles.length === 0) {
+    throw new Error(`No GLB files found in ${targetDir}`)
+  }
 
   if (glbFiles.length === 0) {
-    throw new Error(`No GLB files found in ${targetDir}`)
+    console.log(`No thumbnails to generate in ${targetDir}`)
+    return
   }
 
   const server = await startViteServer()
@@ -140,6 +148,7 @@ async function main() {
 function parseArgs(args) {
   let target = 'core'
   let filter = null
+  let missingOnly = false
 
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index]
@@ -149,12 +158,18 @@ function parseArgs(args) {
       continue
     }
 
+    if (value === '--missing-only') {
+      missingOnly = true
+      continue
+    }
+
     target = value
   }
 
   return {
     targetDir: resolveContentPackDir(target),
     filter,
+    missingOnly,
   }
 }
 
@@ -165,6 +180,17 @@ function resolveContentPackDir(input) {
   }
 
   return path.join(rootDir, 'src/assets/models', input)
+}
+
+function shouldGenerateThumbnail(targetDir, fileName) {
+  const assetPath = path.join(targetDir, fileName)
+  const outputPath = assetPath.replace(/\.glb$/i, '.png')
+
+  if (!existsSync(outputPath)) {
+    return true
+  }
+
+  return statSync(outputPath).mtimeMs < statSync(assetPath).mtimeMs
 }
 
 function toViteFsUrl(filePath) {

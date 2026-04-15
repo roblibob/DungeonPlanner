@@ -18,6 +18,17 @@ import { PlayVisibilityMask } from './PlayVisibilityMask'
 import { PlayVisibilityDebugRays } from './PlayVisibilityDebugRays'
 import { createPlayDragState, updatePlayDragState, type PlayDragState } from './playDrag'
 import { RoomResizeOverlay } from './RoomResizeOverlay'
+import type { DungeonRoomData } from './DungeonRoom'
+
+const FLOOR_HEIGHT_UNIT = 3
+
+const ALWAYS_VISIBLE: ReturnType<typeof usePlayVisibility> = {
+  active: false,
+  getCellVisibility: () => 'visible',
+  getObjectVisibility: () => 'visible',
+  getWallVisibility: () => 'visible',
+  mask: null,
+}
 
 async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
   const powerPreference =
@@ -79,6 +90,7 @@ async function createPreferredRenderer(props: THREE.WebGLRendererParameters) {
 export function Scene() {
   const activeFloorId = useDungeonStore((state) => state.activeFloorId)
   const floors        = useDungeonStore((state) => state.floors)
+  const floorViewMode = useDungeonStore((state) => state.floorViewMode)
 
   // Track previous floor so we can compute direction before FloorContent remounts.
   // Mutating a ref during render is intentional here — it runs in the same cycle
@@ -110,7 +122,11 @@ export function Scene() {
         {/* Global scene elements — never remount on floor switch */}
         <GlobalContent />
         {/* Floor-specific content — remounts when active floor changes */}
-        <FloorContent key={activeFloorId} startY={floorAnimStartY.current} />
+        {floorViewMode === 'scene' ? (
+          <SceneOverviewContent />
+        ) : (
+          <FloorContent key={activeFloorId} startY={floorAnimStartY.current} />
+        )}
       </Suspense>
     </Canvas>
   )
@@ -123,6 +139,7 @@ function GlobalContent() {
   const lightIntensity = useDungeonStore((state) => state.sceneLighting.intensity)
   const postProcessingEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const tool = useDungeonStore((state) => state.tool)
+  const floorViewMode = useDungeonStore((state) => state.floorViewMode)
 
   return (
     <>
@@ -149,13 +166,106 @@ function GlobalContent() {
         position={[-8, 7, -4]}
       />
 
-      <Grid playMode={tool === 'play'} />
+      {floorViewMode === 'active' && <Grid playMode={tool === 'play'} />}
       <Controls />
       <FloorTransitionController />
       <CameraPresetManager />
       <FpsMeterNode />
       <FrameDriver />
       {postProcessingEnabled && <WebGPUPostProcessing />}
+    </>
+  )
+}
+
+type FloorRenderEntry = {
+  id: string
+  level: number
+  data: DungeonRoomData
+  objects: DungeonObjectRecord[]
+}
+
+function SceneOverviewContent() {
+  const floors = useDungeonStore((state) => state.floors)
+  const floorOrder = useDungeonStore((state) => state.floorOrder)
+  const activeFloorId = useDungeonStore((state) => state.activeFloorId)
+  const paintedCells = useDungeonStore((state) => state.paintedCells)
+  const layers = useDungeonStore((state) => state.layers)
+  const rooms = useDungeonStore((state) => state.rooms)
+  const wallOpenings = useDungeonStore((state) => state.wallOpenings)
+  const placedObjects = useDungeonStore((state) => state.placedObjects)
+  const globalFloorAssetId = useDungeonStore((state) => state.selectedAssetIds.floor)
+  const globalWallAssetId = useDungeonStore((state) => state.selectedAssetIds.wall)
+  const floorEntries = useMemo<FloorRenderEntry[]>(() => {
+    const sortedFloorIds = [...floorOrder].sort(
+      (left, right) => (floors[right]?.level ?? 0) - (floors[left]?.level ?? 0),
+    )
+
+    return sortedFloorIds.flatMap((floorId) => {
+      const floor = floors[floorId]
+      if (!floor) {
+        return []
+      }
+
+      if (floorId === activeFloorId) {
+        return [{
+          id: floorId,
+          level: floor.level,
+          data: {
+            paintedCells,
+            layers,
+            rooms,
+            wallOpenings,
+            placedObjects,
+            globalFloorAssetId,
+            globalWallAssetId,
+          },
+          objects: Object.values(placedObjects).filter((object) => layers[object.layerId]?.visible !== false),
+        }]
+      }
+
+      const snapshot = floor.snapshot
+      return [{
+        id: floorId,
+        level: floor.level,
+        data: {
+          paintedCells: snapshot.paintedCells,
+          layers: snapshot.layers,
+          rooms: snapshot.rooms,
+          wallOpenings: snapshot.wallOpenings,
+          placedObjects: snapshot.placedObjects,
+          globalFloorAssetId: snapshot.selectedAssetIds.floor,
+          globalWallAssetId: snapshot.selectedAssetIds.wall,
+        },
+        objects: Object.values(snapshot.placedObjects).filter(
+          (object) => snapshot.layers[object.layerId]?.visible !== false,
+        ),
+      }]
+    })
+  }, [
+    activeFloorId,
+    floorOrder,
+    floors,
+    globalFloorAssetId,
+    globalWallAssetId,
+    layers,
+    paintedCells,
+    placedObjects,
+    rooms,
+    wallOpenings,
+  ])
+
+  return (
+    <>
+      {floorEntries.map((entry) => (
+        <group key={entry.id} position={[0, entry.level * FLOOR_HEIGHT_UNIT, 0]}>
+          <DungeonRoom data={entry.data} visibility={ALWAYS_VISIBLE} enableBuildAnimation={false} />
+          {entry.objects
+            .filter((object) => object.assetId !== 'core.props_staircase_down')
+            .map((object) => (
+              <DungeonObject key={object.id} object={object} visibility={ALWAYS_VISIBLE} />
+            ))}
+        </group>
+      ))}
     </>
   )
 }

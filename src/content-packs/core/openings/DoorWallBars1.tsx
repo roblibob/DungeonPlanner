@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import doorWallBars1AssetUrl from '../../../assets/models/core/door_wall_bars_1.glb'
+import doorWallBars1ThumbnailUrl from '../../../assets/models/core/door_wall_bars_1.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 const PROP_PIVOT_OFFSET = [0, 1, 0] as const
@@ -27,6 +28,7 @@ export const openingDoorWallBars1Asset: ContentPackAsset = {
   name: 'Small door with bars',
   category: 'opening',
   assetUrl: doorWallBars1AssetUrl,
+  thumbnailUrl: doorWallBars1ThumbnailUrl,
   Component: OpeningDoorWallBars1,
   metadata: {
     openingWidth: 1,

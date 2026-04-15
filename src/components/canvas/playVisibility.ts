@@ -959,7 +959,7 @@ export function buildPortalLookup(wallOpenings: Record<string, OpeningRecord>) {
   const lookup = new Map<string, PortalSegment>()
 
   for (const opening of Object.values(wallOpenings)) {
-    const portal = getOpeningPortalSegment(opening.wallKey, opening.width)
+    const portal = getOpeningPortalSegment(opening)
     for (const wallKey of getOpeningSegments(opening.wallKey, opening.width)) {
       lookup.set(wallKey, portal)
       const parsed = parseWallKey(wallKey)
@@ -972,11 +972,12 @@ export function buildPortalLookup(wallOpenings: Record<string, OpeningRecord>) {
   return lookup
 }
 
-function getOpeningPortalSegment(wallKey: string, width: 1 | 2 | 3): PortalSegment {
-  const segments = getOpeningSegments(wallKey, width)
-  const [xText, zText, directionText] = wallKey.split(':')
+function getOpeningPortalSegment(opening: OpeningRecord): PortalSegment {
+  const segments = getOpeningSegments(opening.wallKey, opening.width)
+  const [xText, zText, directionText] = opening.wallKey.split(':')
   const x = Number.parseInt(xText ?? '', 10)
   const z = Number.parseInt(zText ?? '', 10)
+  const inset = opening.assetId ? MASK_OPENING_INSET : MASK_DISTANCE_EPSILON
   const indices = segments.map((segment) => segment.split(':')).map(([sx, sz]) => ({
     x: Number.parseInt(sx ?? '', 10),
     z: Number.parseInt(sz ?? '', 10),
@@ -989,8 +990,8 @@ function getOpeningPortalSegment(wallKey: string, width: 1 | 2 | 3): PortalSegme
     return normalizePortalSegment({
       orientation: 'horizontal',
       fixed,
-      min: minX + MASK_OPENING_INSET,
-      max: maxX - MASK_OPENING_INSET,
+      min: minX + inset,
+      max: maxX - inset,
     })
   }
 
@@ -1000,8 +1001,8 @@ function getOpeningPortalSegment(wallKey: string, width: 1 | 2 | 3): PortalSegme
   return normalizePortalSegment({
     orientation: 'vertical',
     fixed,
-    min: minZ + MASK_OPENING_INSET,
-    max: maxZ - MASK_OPENING_INSET,
+    min: minZ + inset,
+    max: maxZ - inset,
   })
 }
 

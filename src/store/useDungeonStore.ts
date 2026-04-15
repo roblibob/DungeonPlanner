@@ -117,6 +117,7 @@ export type PostProcessingSettings = {
 }
 
 export type WallConnectionMode = 'wall' | 'door' | 'open'
+export type FloorViewMode = 'active' | 'scene'
 
 type DungeonState = DungeonSnapshot & {
   cameraMode: CameraMode
@@ -131,6 +132,7 @@ type DungeonState = DungeonSnapshot & {
   showGrid: boolean
   showLosDebugMask: boolean
   showLosDebugRays: boolean
+  floorViewMode: FloorViewMode
   activeCameraMode: CameraPreset
   cameraPreset: CameraPreset | null
   history: DungeonSnapshot[]
@@ -162,6 +164,7 @@ type DungeonState = DungeonSnapshot & {
   setShowGrid: (show: boolean) => void
   setShowLosDebugMask: (show: boolean) => void
   setShowLosDebugRays: (show: boolean) => void
+  setFloorViewMode: (mode: FloorViewMode) => void
   setCameraPreset: (preset: CameraPreset) => void
   clearCameraPreset: () => void
   fpsLimit: 0 | 30 | 60 | 120
@@ -480,6 +483,7 @@ export const useDungeonStore = create<DungeonState>()(
   showGrid: true,
   showLosDebugMask: false,
   showLosDebugRays: false,
+  floorViewMode: 'active' as FloorViewMode,
   fpsLimit: 60 as 0 | 30 | 60 | 120,
   activeCameraMode: 'perspective',
   cameraPreset: null,
@@ -1032,6 +1036,9 @@ export const useDungeonStore = create<DungeonState>()(
   setShowLosDebugRays: (show) => {
     set((state) => ({ ...state, showLosDebugRays: show }))
   },
+  setFloorViewMode: (mode) => {
+    set((state) => (state.floorViewMode === mode ? state : { ...state, floorViewMode: mode }))
+  },
   setFpsLimit: (limit) => {
     set((state) => ({ ...state, fpsLimit: limit }))
   },
@@ -1082,6 +1089,7 @@ export const useDungeonStore = create<DungeonState>()(
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
         selectedRoomId: null,
+        floorViewMode: 'active',
         activeCameraMode: 'perspective',
         cameraPreset: null,
         history: [],
@@ -1100,6 +1108,7 @@ export const useDungeonStore = create<DungeonState>()(
         isObjectDragActive: false,
         selectedRoomId: null,
         cameraMode: 'orbit',
+      floorViewMode: 'active',
       activeCameraMode: 'perspective',
       cameraPreset: 'perspective', // triggers camera to home position
        // Settings reset to defaults
@@ -1840,6 +1849,7 @@ export const useDungeonStore = create<DungeonState>()(
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
         selectedRoomId: null,
+        floorViewMode: 'active',
         activeCameraMode: 'perspective',
         cameraPreset: null,
       history: [],

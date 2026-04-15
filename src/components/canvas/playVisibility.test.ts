@@ -270,6 +270,30 @@ describe('castVisibilityMaskRay', () => {
     const point = castVisibilityMaskRay([0, 0], Math.PI / 4, paintedCells, wallOpenings, 3)
     expect(point[0]).toBeLessThan(2.05)
   })
+
+  it('treats open passages as full-width LOS portals', () => {
+    const paintedCells = makeCells([
+      { cell: [0, 0], roomId: 'room-a' },
+      { cell: [1, 0], roomId: 'room-b' },
+      { cell: [2, 0], roomId: 'room-c' },
+      { cell: [1, 1], roomId: 'room-b' },
+      { cell: [2, 1], roomId: 'room-c' },
+    ])
+
+    const wallOpenings: Record<string, OpeningRecord> = {
+      'open-passage': {
+        id: 'open-passage',
+        assetId: null,
+        wallKey: '0:0:east',
+        width: 1,
+        flipped: false,
+        layerId: 'default',
+      },
+    }
+
+    const point = castVisibilityMaskRay([0, 0], 0.67, paintedCells, wallOpenings, 3)
+    expect(point[0]).toBeGreaterThan(2.3)
+  })
 })
 
 describe('computeVisibilitySamples', () => {

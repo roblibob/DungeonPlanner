@@ -20,9 +20,11 @@ export function ScenePanel() {
   const floors       = useDungeonStore((s) => s.floors)
   const floorOrder   = useDungeonStore((s) => s.floorOrder)
   const activeFloorId = useDungeonStore((s) => s.activeFloorId)
+  const floorViewMode = useDungeonStore((s) => s.floorViewMode)
   const selection    = useDungeonStore((s) => s.selection)
   const selectObject = useDungeonStore((s) => s.selectObject)
   const setTool      = useDungeonStore((s) => s.setTool)
+  const setFloorViewMode = useDungeonStore((s) => s.setFloorViewMode)
   const removeRoom   = useDungeonStore((s) => s.removeRoom)
   const renameRoom   = useDungeonStore((s) => s.renameRoom)
   const deleteFloor  = useDungeonStore((s) => s.deleteFloor)
@@ -65,37 +67,59 @@ export function ScenePanel() {
       </p>
 
       <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-label="Scene overview"
+          onClick={() => setFloorViewMode('scene')}
+          className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-left transition ${
+            floorViewMode === 'scene'
+              ? 'border-sky-400/40 bg-sky-500/10 text-sky-100'
+              : 'border-stone-800/50 bg-stone-950/40 text-stone-300 hover:border-stone-700 hover:text-stone-100'
+          }`}
+        >
+          <span className="text-xs font-semibold uppercase tracking-[0.24em]">Scene</span>
+          <span className="rounded px-1 py-px text-[9px] uppercase tracking-[0.15em] bg-stone-900/60">
+            {floorViewMode === 'scene' ? 'overview' : 'all floors'}
+          </span>
+        </button>
+
         {sortedFloorIds.map((floorId) => {
           const floor = floors[floorId]
           if (!floor) return null
           const data = getFloorData(floorId)
-          const isActive = floorId === activeFloorId
+          const isEditingFloor = floorId === activeFloorId
+          const isActive = floorViewMode === 'active' && isEditingFloor
 
           return (
             <FloorNode
               key={floorId}
               floor={floor}
               isActive={isActive}
+              isEditingFloor={isEditingFloor}
+              isSceneOverview={floorViewMode === 'scene'}
               data={data}
               selection={selection}
-              onActivate={() => !isActive && requestFloorTransition(floorId)}
+              onActivate={() => {
+                setFloorViewMode('active')
+                if (!isEditingFloor) requestFloorTransition(floorId)
+              }}
               onRename={(name) => renameFloor(floorId, name)}
               onDelete={floorOrder.length > 1 ? () => deleteFloor(floorId) : undefined}
               onSelectProp={(id) => {
-                if (!isActive) requestFloorTransition(floorId)
+                if (floorViewMode !== 'scene' && !isEditingFloor) requestFloorTransition(floorId)
                 selectObject(id)
                 setTool('prop')
               }}
               onSelectOpening={(id) => {
-                if (!isActive) requestFloorTransition(floorId)
+                if (floorViewMode !== 'scene' && !isEditingFloor) requestFloorTransition(floorId)
                 selectObject(id)
                 setTool('opening')
               }}
               onRenameRoom={(roomId, name) => {
-                if (isActive) renameRoom(roomId, name)
+                if (isEditingFloor) renameRoom(roomId, name)
               }}
               onDeleteRoom={(roomId) => {
-                if (isActive) removeRoom(roomId)
+                if (isEditingFloor) removeRoom(roomId)
               }}
             />
           )
@@ -110,6 +134,8 @@ export function ScenePanel() {
 type FloorNodeProps = {
   floor: FloorRecord
   isActive: boolean
+  isEditingFloor: boolean
+  isSceneOverview: boolean
   data: FloorData
   selection: string | null
   onActivate: () => void
@@ -122,7 +148,7 @@ type FloorNodeProps = {
 }
 
 function FloorNode({
-  floor, isActive, data, selection,
+  floor, isActive, isEditingFloor, isSceneOverview, data, selection,
   onActivate, onRename, onDelete,
   onSelectProp, onSelectOpening, onRenameRoom, onDeleteRoom,
 }: FloorNodeProps) {
@@ -193,6 +219,9 @@ function FloorNode({
 
         {isActive && (
           <span className="shrink-0 rounded px-1 py-px text-[9px] uppercase tracking-[0.15em] bg-sky-900/40 text-sky-400/80">active</span>
+        )}
+        {!isActive && isSceneOverview && isEditingFloor && (
+          <span className="shrink-0 rounded px-1 py-px text-[9px] uppercase tracking-[0.15em] bg-amber-900/40 text-amber-300/80">edit</span>
         )}
 
         {onDelete && (

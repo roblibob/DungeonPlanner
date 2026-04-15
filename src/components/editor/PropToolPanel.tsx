@@ -1,6 +1,6 @@
 import { getContentPackAssetById, getContentPackAssetsByCategory } from '../../content-packs/registry'
-import type { ContentPackAsset } from '../../content-packs/types'
 import { useDungeonStore } from '../../store/useDungeonStore'
+import { AssetCatalog } from './AssetCatalog'
 
 export function PropToolPanel() {
   const selectedAssetIds = useDungeonStore((state) => state.selectedAssetIds)
@@ -23,30 +23,11 @@ export function PropToolPanel() {
 
   return (
     <div className="space-y-4">
-      <section>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70">
-          Catalogue
-        </p>
-        <div className="space-y-4">
-          {catalogSections.map((section) => (
-            <div key={section.title}>
-              <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.24em] text-stone-500">
-                {section.title}
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                {section.assets.map((asset) => (
-                  <CatalogCard
-                    key={asset.id}
-                    asset={asset}
-                    active={selectedAssetIds.prop === asset.id}
-                    onSelect={() => setSelectedAsset('prop', asset.id)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <AssetCatalog
+        sections={catalogSections}
+        isSelected={(asset) => selectedAssetIds.prop === asset.id}
+        onSelect={(asset) => setSelectedAsset('prop', asset.id)}
+      />
 
       <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-xs leading-6 text-stone-400">
         <p className="font-medium text-stone-300">Placement Tool</p>
@@ -87,61 +68,6 @@ export function PropToolPanel() {
         </section>
       )}
     </div>
-  )
-}
-
-function CatalogCard({
-  asset,
-  active,
-  onSelect,
-}: {
-  asset: ContentPackAsset
-  active: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={active}
-      className={`overflow-hidden rounded-2xl border text-left transition ${
-        active
-          ? 'border-teal-300/35 bg-teal-400/10 shadow-[0_0_0_1px_rgba(94,234,212,0.12)]'
-          : 'border-stone-800 bg-stone-950/60 hover:border-stone-700'
-      }`}
-    >
-      <div className="aspect-square border-b border-stone-800/80 bg-stone-900/80">
-        {asset.thumbnailUrl ? (
-          <img
-            src={asset.thumbnailUrl}
-            alt={`${asset.name} thumbnail`}
-            className="h-full w-full object-contain"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[10px] uppercase tracking-[0.24em] text-stone-600">
-            No preview
-          </div>
-        )}
-      </div>
-      <div className="space-y-1 px-3 py-3">
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-sm font-medium text-stone-100">{asset.name}</span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] ${
-              active
-                ? 'bg-teal-300/15 text-teal-100'
-                : asset.category === 'player'
-                  ? 'bg-sky-400/10 text-sky-200'
-                  : 'bg-stone-800 text-stone-400'
-            }`}
-          >
-            {active ? 'Selected' : asset.category}
-          </span>
-        </div>
-        <p className="text-[11px] text-stone-500">{asset.slug}</p>
-      </div>
-    </button>
   )
 }
 

@@ -11,8 +11,11 @@ import {
 } from '../../hooks/useSnapToGrid'
 import {
   useDungeonStore,
+  type DungeonObjectRecord,
+  type Layer,
   type OpeningRecord,
   type PaintedCells,
+  type Room,
 } from '../../store/useDungeonStore'
 import { getOpeningSegments } from '../../store/openingSegments'
 import { getBuildYOffset, isAnimationActive } from '../../store/buildAnimations'
@@ -49,14 +52,50 @@ type CellGroup = {
   cells: GridCell[]
 }
 
-export function DungeonRoom({ visibility }: { visibility: PlayVisibility }) {
-  const paintedCells = useDungeonStore((state) => state.paintedCells)
-  const layers = useDungeonStore((state) => state.layers)
-  const rooms = useDungeonStore((state) => state.rooms)
-  const wallOpenings = useDungeonStore((state) => state.wallOpenings)
-  const placedObjects = useDungeonStore((state) => state.placedObjects)
-  const globalFloorAssetId = useDungeonStore((state) => state.selectedAssetIds.floor)
-  const globalWallAssetId = useDungeonStore((state) => state.selectedAssetIds.wall)
+export type DungeonRoomData = {
+  paintedCells: PaintedCells
+  layers: Record<string, Layer>
+  rooms: Record<string, Room>
+  wallOpenings: Record<string, OpeningRecord>
+  placedObjects: Record<string, DungeonObjectRecord>
+  globalFloorAssetId: string | null
+  globalWallAssetId: string | null
+}
+
+export function DungeonRoom({
+  visibility,
+  data,
+  enableBuildAnimation = true,
+}: {
+  visibility: PlayVisibility
+  data?: DungeonRoomData
+  enableBuildAnimation?: boolean
+}) {
+  const livePaintedCells = useDungeonStore((state) => state.paintedCells)
+  const liveLayers = useDungeonStore((state) => state.layers)
+  const liveRooms = useDungeonStore((state) => state.rooms)
+  const liveWallOpenings = useDungeonStore((state) => state.wallOpenings)
+  const livePlacedObjects = useDungeonStore((state) => state.placedObjects)
+  const liveGlobalFloorAssetId = useDungeonStore((state) => state.selectedAssetIds.floor)
+  const liveGlobalWallAssetId = useDungeonStore((state) => state.selectedAssetIds.wall)
+  const resolvedData = data ?? {
+    paintedCells: livePaintedCells,
+    layers: liveLayers,
+    rooms: liveRooms,
+    wallOpenings: liveWallOpenings,
+    placedObjects: livePlacedObjects,
+    globalFloorAssetId: liveGlobalFloorAssetId,
+    globalWallAssetId: liveGlobalWallAssetId,
+  }
+  const {
+    paintedCells,
+    layers,
+    rooms,
+    wallOpenings,
+    placedObjects,
+    globalFloorAssetId,
+    globalWallAssetId,
+  } = resolvedData
 
   // Floor cells occupied by a StaircaseDown have no floor tile — the staircase
   // model fills the space and a tile would clip through it.
@@ -122,10 +161,17 @@ export function DungeonRoom({ visibility }: { visibility: PlayVisibility }) {
             suppressedWallKeys={suppressedWallKeys}
             blockedFloorCellKeys={blockedFloorCellKeys}
             visibility={visibility}
+            enableBuildAnimation={enableBuildAnimation}
           />
         ))}
       {Object.values(wallOpenings).map((opening) => (
-        <OpeningRenderer key={opening.id} opening={opening} visibility={visibility} />
+        <OpeningRenderer
+          key={opening.id}
+          opening={opening}
+          visibility={visibility}
+          enableBuildAnimation={enableBuildAnimation}
+          layerVisible={layers[opening.layerId]?.visible !== false}
+        />
       ))}
     </>
   )
@@ -137,12 +183,14 @@ function CellGroupRenderer({
   suppressedWallKeys,
   blockedFloorCellKeys,
   visibility,
+  enableBuildAnimation,
 }: {
   group: CellGroup
   paintedCells: PaintedCells
   suppressedWallKeys: Set<string>
   blockedFloorCellKeys: Set<string>
   visibility: PlayVisibility
+  enableBuildAnimation: boolean
 }) {
   const walls = useMemo(
     () => deriveRoomWalls(group.cells, paintedCells, suppressedWallKeys),
@@ -155,7 +203,7 @@ function CellGroupRenderer({
         const key = getCellKey(cell)
         if (blockedFloorCellKeys.has(key)) return null
         return (
-          <AnimatedTileGroup key={`floor:${key}`} cellKey={key}>
+          <AnimatedTileGroup key={`floor:${key}`} cellKey={key} enabled={enableBuildAnimation}>
             <ContentPackInstance
               assetId={group.floorAssetId}
               position={cellToWorldPosition(cell)}
@@ -170,7 +218,12 @@ function CellGroupRenderer({
       {walls.map((wall) => {
         const floorKey = wall.key.split(':').slice(0, 2).join(':')
         return (
-          <AnimatedTileGroup key={wall.key} cellKey={floorKey} extraDelay={WALL_EXTRA_DELAY_MS}>
+          <AnimatedTileGroup
+            key={wall.key}
+            cellKey={floorKey}
+            extraDelay={WALL_EXTRA_DELAY_MS}
+            enabled={enableBuildAnimation}
+          >
             <ContentPackInstance
               assetId={group.wallAssetId}
               position={wall.position}
@@ -194,18 +247,27 @@ function CellGroupRenderer({
 function AnimatedTileGroup({
   cellKey,
   extraDelay = 0,
+  enabled = true,
   children,
 }: {
   cellKey: string
   extraDelay?: number
+  enabled?: boolean
   children: ReactNode
 }) {
   const groupRef = useRef<THREE.Group>(null)
   // Once the animation registry entry is gone and y has settled to 0, stop running.
-  const doneRef = useRef(false)
+  const doneRef = useRef(!enabled)
+
+  useLayoutEffect(() => {
+    doneRef.current = !enabled
+    if (!enabled && groupRef.current) {
+      groupRef.current.position.y = 0
+    }
+  }, [enabled])
 
   useFrame(() => {
-    if (doneRef.current) return
+    if (doneRef.current || !enabled) return
     const group = groupRef.current
     if (!group) return
     const y = getBuildYOffset(cellKey, performance.now(), extraDelay)
@@ -265,11 +327,14 @@ function deriveRoomWalls(
 function OpeningRenderer({
   opening,
   visibility,
+  enableBuildAnimation,
+  layerVisible,
 }: {
   opening: OpeningRecord
   visibility: PlayVisibility
+  enableBuildAnimation: boolean
+  layerVisible: boolean
 }) {
-  const layers = useDungeonStore((state) => state.layers)
   const selection = useDungeonStore((state) => state.selection)
   const selectObject = useDungeonStore((state) => state.selectObject)
   const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
@@ -283,7 +348,7 @@ function OpeningRenderer({
 
   const tool = useDungeonStore((state) => state.tool)
 
-  if (layers[opening.layerId]?.visible === false) return null
+  if (!layerVisible) return null
 
   const wallPosition = wallKeyToWorldPosition(opening.wallKey)
   if (!wallPosition) return null
@@ -305,7 +370,11 @@ function OpeningRenderer({
   }
 
   return (
-    <group ref={groupRef} position={wallPosition.position} rotation={rotation}>
+    <AnimatedTileGroup
+      cellKey={opening.wallKey.split(':').slice(0, 2).join(':')}
+      enabled={enableBuildAnimation}
+    >
+      <group ref={groupRef} position={wallPosition.position} rotation={rotation}>
       {opening.assetId ? (
         <ContentPackInstance
           assetId={opening.assetId}
@@ -315,17 +384,33 @@ function OpeningRenderer({
           onClick={handleClick}
         />
       ) : (
-        <mesh onClick={handleClick}>
-          <boxGeometry args={[opening.width * GRID_SIZE * 0.95, 2.2, 0.1]} />
-          <meshBasicMaterial
-            transparent
-            opacity={selected ? 0.18 : 0}
-            color={selected ? '#22c55e' : '#ffffff'}
-            depthTest={false}
-          />
-        </mesh>
+        <>
+          <mesh onClick={handleClick}>
+            <boxGeometry args={[opening.width * GRID_SIZE * 0.95, 2.2, 0.1]} />
+            <meshBasicMaterial
+              transparent
+              opacity={0}
+              colorWrite={false}
+              depthWrite={false}
+              depthTest={false}
+            />
+          </mesh>
+          {selected && (
+            <mesh>
+              <boxGeometry args={[opening.width * GRID_SIZE * 0.95, 2.2, 0.1]} />
+              <meshBasicMaterial
+                transparent
+                opacity={0.18}
+                color="#22c55e"
+                depthWrite={false}
+                depthTest={false}
+              />
+            </mesh>
+          )}
+        </>
       )}
-    </group>
+      </group>
+    </AnimatedTileGroup>
   )
 }
 

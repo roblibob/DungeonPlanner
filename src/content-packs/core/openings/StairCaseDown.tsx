@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import propsStairCaseAssetUrl from '../../../assets/models/core/staircase.glb'
+import propsStairCaseThumbnailUrl from '../../../assets/models/core/staircase.png'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
 
 // Same orientation as StaircaseUp — hole and floor-tile skip handled in StaircaseHole.tsx
@@ -28,6 +29,7 @@ export const propsStairCaseDownAsset: ContentPackAsset = {
   name: 'Staircase Down',
   category: 'opening',
   assetUrl: propsStairCaseAssetUrl,
+  thumbnailUrl: propsStairCaseThumbnailUrl,
   Component: PropsStairCaseDown,
   metadata: {
     connectsTo: 'FLOOR',

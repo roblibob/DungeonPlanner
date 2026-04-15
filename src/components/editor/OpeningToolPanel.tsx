@@ -1,5 +1,7 @@
 import { getContentPackAssetById, getContentPackAssetsByCategory } from '../../content-packs/registry'
+import type { ContentPackAsset } from '../../content-packs/types'
 import { useDungeonStore } from '../../store/useDungeonStore'
+import { AssetCatalog } from './AssetCatalog'
 
 export function OpeningToolPanel() {
   const selectedAssetIds = useDungeonStore((state) => state.selectedAssetIds)
@@ -15,6 +17,16 @@ export function OpeningToolPanel() {
   const selectedAsset = selectedOpening?.assetId
     ? getContentPackAssetById(selectedOpening.assetId)
     : null
+  const openingCatalogSections = [
+    {
+      title: 'Doors',
+      assets: openingAssets.filter((asset) => asset.metadata?.connectsTo === 'WALL'),
+    },
+    {
+      title: 'Stairs',
+      assets: openingAssets.filter((asset) => asset.metadata?.connectsTo !== 'WALL'),
+    },
+  ].filter((section) => section.assets.length > 0)
 
   return (
     <div className="space-y-4">
@@ -48,42 +60,22 @@ export function OpeningToolPanel() {
       </section>
 
       {wallConnectionMode === 'door' && (
-        <section>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70">
-            Opening Assets
-          </p>
+        <>
           {openingAssets.length === 0 ? (
             <p className="rounded-2xl border border-stone-800 bg-stone-950/50 px-4 py-3 text-xs text-stone-500">
               No opening assets in content pack.
             </p>
           ) : (
-            <div className="grid gap-2">
-              {openingAssets.map((asset) => {
-                const active = selectedAssetIds.opening === asset.id
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    onClick={() => setSelectedAsset('opening', asset.id)}
-                    className={`rounded-2xl border px-3 py-3 text-left transition ${
-                      active
-                        ? 'border-teal-300/35 bg-teal-400/10'
-                        : 'border-stone-800 bg-stone-950/60 hover:border-stone-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-stone-100">{asset.name}</span>
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400">
-                        {active ? 'Selected' : `w${asset.metadata?.openingWidth ?? 1}`}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-stone-500">{asset.slug}</p>
-                  </button>
-                )
-              })}
-            </div>
+            <AssetCatalog
+              title="Opening Catalogue"
+              sections={openingCatalogSections}
+              isSelected={(asset) => selectedAssetIds.opening === asset.id}
+              onSelect={(asset) => setSelectedAsset('opening', asset.id)}
+              getBadgeLabel={getOpeningBadgeLabel}
+              getBadgeClassName={getOpeningBadgeClassName}
+            />
           )}
-        </section>
+        </>
       )}
 
       <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-xs leading-6 text-stone-400">
@@ -143,4 +135,24 @@ function PropRow({ label, value }: { label: string; value: string }) {
       <span className="break-all text-right text-stone-300">{value}</span>
     </div>
   )
+}
+
+function getOpeningBadgeLabel(asset: ContentPackAsset, active: boolean) {
+  if (active) {
+    return 'Selected'
+  }
+
+  return asset.metadata?.connectsTo === 'WALL'
+    ? `w${asset.metadata?.openingWidth ?? 1}`
+    : 'floor'
+}
+
+function getOpeningBadgeClassName(asset: ContentPackAsset, active: boolean) {
+  if (active) {
+    return 'bg-teal-300/15 text-teal-100'
+  }
+
+  return asset.metadata?.connectsTo === 'WALL'
+    ? 'bg-violet-400/10 text-violet-200'
+    : 'bg-amber-400/10 text-amber-200'
 }
