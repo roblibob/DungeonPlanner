@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/dungeonplanner.png" alt="DungeonPlanner" width="320" />
+  <img src="web/logo-dark.png" alt="DungeonPlanner" width="320" />
 </p>
 
 <h1 align="center">DungeonPlanner</h1>
