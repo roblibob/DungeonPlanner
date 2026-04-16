@@ -14,14 +14,51 @@ concurrency:
   group: deploy-dungeonplanner-production
   cancel-in-progress: true
 
+env:
+  AWS_REGION: eu-north-1
+  S3_BUCKET: demo.dungeonplanner.com-eu-north-1
+  WEB_PREFIX: web
+  CLOUDFRONT_DISTRIBUTION_ID: E3U9MGNZ370J2M
+
 jobs:
-  deploy:
+  detect-changes:
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: eu-north-1
-      S3_BUCKET: demo.dungeonplanner.com-eu-north-1
-      WEB_PREFIX: web
-      CLOUDFRONT_DISTRIBUTION_ID: E3U9MGNZ370J2M
+    outputs:
+      demo: ${{ steps.filter.outputs.demo }}
+      docs: ${{ steps.filter.outputs.docs }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            demo:
+              - 'src/**'
+              - 'public/**'
+              - 'index.html'
+              - 'vite.config.ts'
+              - 'tsconfig*.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/deploy-pages.yml'
+            docs:
+              - 'docs/**'
+              - 'scripts/build-docs-site.mjs'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/deploy-pages.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/deploy-pages.yml'
+
+  deploy-demo:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.demo == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,8 +77,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm turbo run build --filter=dungeonplanner
+      - name: Build demo app
+        run: pnpm run build:demo
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -50,19 +87,89 @@ jobs:
           role-session-name: github-actions-dungeonplanner-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload static files to S3
+      - name: Deploy demo app files
         run: |
           aws s3 sync dist/ "s3://${S3_BUCKET}" \
             --delete \
+            --exclude "docs/*" \
             --exclude "*.html"
           aws s3 sync dist/ "s3://${S3_BUCKET}" \
+            --exclude "docs/*" \
+            --exclude "*" \
+            --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate demo cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths "/index.html" "/assets/*" "/favicon.svg" "/icons.svg"
+
+  deploy-docs:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.docs == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build docs site
+        run: pnpm run build:docs
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::785092168067:role/github-actions-fingergun-web-deploy
+          role-session-name: github-actions-dungeonplanner-deploy-docs
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy docs files
+        run: |
+          aws s3 sync docs-web/dist/ "s3://${S3_BUCKET}/docs/" \
+            --delete \
+            --exclude "*.html"
+          aws s3 sync docs-web/dist/ "s3://${S3_BUCKET}/docs/" \
             --exclude "*" \
             --include "*.html" \
             --cache-control "no-cache, no-store, must-revalidate"
           # Make /docs resolve directly in CloudFront/S3 origin mode.
-          aws s3 cp dist/docs/index.html "s3://${S3_BUCKET}/docs" \
+          aws s3 cp docs-web/dist/index.html "s3://${S3_BUCKET}/docs" \
             --content-type "text/html" \
             --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate docs cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
+            --paths "/docs*" "/_sidebar.md" "/*.md"
+
+  deploy-web:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect-changes.outputs.web == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::785092168067:role/github-actions-fingergun-web-deploy
+          role-session-name: github-actions-dungeonplanner-deploy-web
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy web files
+        run: |
           aws s3 sync web/ "s3://${S3_BUCKET}/${WEB_PREFIX}/" \
             --delete \
             --exclude "*.html"
@@ -71,8 +178,8 @@ jobs:
             --include "*.html" \
             --cache-control "no-cache, no-store, must-revalidate"
 
-      - name: Invalidate CloudFront cache
+      - name: Invalidate web cache
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
-            --paths "/*"
+            --paths "/web/*"

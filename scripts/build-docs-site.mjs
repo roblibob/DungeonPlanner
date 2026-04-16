@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 const docsSourceDir = path.join(rootDir, 'docs')
-const docsOutDir = path.join(rootDir, 'dist', 'docs')
+const docsWebDir = path.join(rootDir, 'docs-web')
+const docsOutDir = path.join(docsWebDir, 'dist')
 
 const DOC_FILE_ORDER = [
   'index.md',
@@ -91,7 +92,7 @@ function buildSidebar() {
 }
 
 async function main() {
-  await mkdir(path.join(rootDir, 'dist'), { recursive: true })
+  await mkdir(docsWebDir, { recursive: true })
   await rm(docsOutDir, { recursive: true, force: true })
   await mkdir(docsOutDir, { recursive: true })
 

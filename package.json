@@ -7,9 +7,11 @@
   "scripts": {
     "dev": "vite",
     "dev:full": "turbo run dev --parallel --filter=dungeonplanner --filter=dungeonplanner-server",
-    "build": "tsc -b && vite build && pnpm run docs:build",
+    "build": "pnpm run build:demo && pnpm run build:docs",
+    "build:demo": "tsc -b && vite build",
+    "build:docs": "node scripts/build-docs-site.mjs",
     "build:all": "turbo run build",
-    "docs:build": "node scripts/build-docs-site.mjs",
+    "docs:build": "pnpm run build:docs",
     "lint": "eslint .",
     "lint:all": "turbo run lint",
     "preview": "vite preview",
