@@ -41,9 +41,13 @@ const docsIndexHtml = `<!doctype html>
     <title>DungeonPlanner Docs</title>
     <meta name="description" content="DungeonPlanner documentation for players, game masters, and developers." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css" />
     <style>
       :root {
         --theme-color: #f59e0b;
+      }
+      body {
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       }
       .cover-main > p:last-child a {
         border-color: var(--theme-color) !important;
@@ -63,6 +67,7 @@ const docsIndexHtml = `<!doctype html>
         repo: 'https://github.com/finger-gun/DungeonPlanner',
         loadSidebar: '_sidebar.md',
         homepage: 'index.md',
+        relativePath: true,
         auto2top: true,
         maxLevel: 3,
         subMaxLevel: 2,
