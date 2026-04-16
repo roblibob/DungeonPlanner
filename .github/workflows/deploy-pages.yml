@@ -91,9 +91,11 @@ jobs:
         run: |
           aws s3 sync dist/ "s3://${S3_BUCKET}" \
             --delete \
+            --exclude "docs" \
             --exclude "docs/*" \
             --exclude "*.html"
           aws s3 sync dist/ "s3://${S3_BUCKET}" \
+            --exclude "docs" \
             --exclude "docs/*" \
             --exclude "*" \
             --include "*.html" \
