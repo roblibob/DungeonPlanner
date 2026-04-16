@@ -26,7 +26,8 @@
     "server": "pnpm --filter dungeonplanner-server dev",
     "server:build": "pnpm --filter dungeonplanner-server build",
     "server:start": "pnpm --filter dungeonplanner-server start",
-    "turbo": "turbo"
+    "turbo": "turbo",
+    "video-to-gif": "bash scripts/video-to-gif.sh"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
