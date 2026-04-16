@@ -24,7 +24,7 @@
 ---
 
 ## Demo
-https://roblibob.github.io/dungeonplanner
+https://dungeonplanner.fingergun.dev/
 
 ## Features
 
