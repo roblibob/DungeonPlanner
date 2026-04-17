@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   deleteGeneratedCharacterAssets,
+  listGeneratedCharacterModels,
   requestGeneratedCharacterImage,
   saveGeneratedCharacterAssets,
 } from '../../generated-characters/api'
@@ -16,6 +17,8 @@ import { useDungeonStore } from '../../store/useDungeonStore'
 
 const CHARACTER_KINDS: GeneratedCharacterKind[] = ['player', 'npc']
 const CHARACTER_SIZES: GeneratedCharacterSize[] = ['S', 'M', 'XL', 'XXL']
+const AUTO_MODEL_VALUE = '__default__'
+const FALLBACK_GENERATION_MODELS = ['x/z-image-turbo', 'x/flux2-klein:9b']
 
 export function CharacterSheetOverlay() {
   const characterSheet = useDungeonStore((state) => state.characterSheet)
@@ -27,11 +30,50 @@ export function CharacterSheetOverlay() {
   const setSelectedAsset = useDungeonStore((state) => state.setSelectedAsset)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null)
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [availableModels, setAvailableModels] = useState<string[]>(FALLBACK_GENERATION_MODELS)
   const activeAssetId = characterSheet.assetId
   const composedPrompt = useMemo(
     () => (character ? composeGeneratedCharacterPrompt(character) : ''),
     [character],
   )
+
+  useEffect(() => {
+    if (!characterSheet.open || !activeAssetId) {
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingModels(true)
+    setModelLoadError(null)
+
+    void listGeneratedCharacterModels()
+      .then((payload) => {
+        if (cancelled) {
+          return
+        }
+        const selectedModel = useDungeonStore.getState().generatedCharacters[activeAssetId]?.model ?? null
+        setAvailableModels(mergeModelOptions(payload.models, payload.defaultModel, selectedModel))
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        const selectedModel = useDungeonStore.getState().generatedCharacters[activeAssetId]?.model ?? null
+        setModelLoadError('Could not load installed Ollama models. Showing common model options instead.')
+        setAvailableModels(mergeModelOptions([], null, selectedModel))
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingModels(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeAssetId, characterSheet.open])
 
   if (!characterSheet.open || !character) {
     return null
@@ -55,7 +97,10 @@ export function CharacterSheetOverlay() {
     setGenerationError(null)
 
     try {
-      const payload = await requestGeneratedCharacterImage(composeGeneratedCharacterPrompt(liveCharacter))
+      const payload = await requestGeneratedCharacterImage(
+        composeGeneratedCharacterPrompt(liveCharacter),
+        { model: liveCharacter.model },
+      )
       const processed = await processGeneratedCharacterImage(payload.imageDataUrl)
       const savedAssets = await saveGeneratedCharacterAssets({
         originalImageDataUrl: payload.imageDataUrl,
@@ -94,7 +139,7 @@ export function CharacterSheetOverlay() {
 
   return (
     <aside className="absolute inset-x-6 top-6 z-20 flex max-h-[calc(100%-3rem)] justify-center pointer-events-none">
-      <div className="pointer-events-auto flex w-full max-w-5xl overflow-hidden rounded-3xl border border-stone-700/70 bg-stone-950/94 shadow-2xl backdrop-blur">
+      <div className="pointer-events-auto flex max-h-full w-full max-w-5xl overflow-hidden rounded-3xl border border-stone-700/70 bg-stone-950/94 shadow-2xl backdrop-blur">
         <section className="flex w-[21rem] shrink-0 flex-col border-r border-stone-800/70 bg-stone-925/90 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -162,7 +207,7 @@ export function CharacterSheetOverlay() {
           )}
         </section>
 
-        <section className="flex min-w-0 flex-1 flex-col gap-5 p-6">
+        <section className="flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-sky-200/75">
               Identity
@@ -228,6 +273,35 @@ export function CharacterSheetOverlay() {
           </div>
 
           <div>
+            <label
+              htmlFor="character-model"
+              className="block text-[10px] font-medium uppercase tracking-[0.24em] text-stone-500"
+            >
+              Image Model
+            </label>
+            <select
+              id="character-model"
+              value={character.model ?? AUTO_MODEL_VALUE}
+              onChange={(event) => updateGeneratedCharacter(character.assetId, {
+                model: event.target.value === AUTO_MODEL_VALUE ? null : event.target.value,
+              })}
+              className="mt-2 w-full rounded-2xl border border-stone-800 bg-stone-950/80 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-sky-300/30"
+            >
+              <option value={AUTO_MODEL_VALUE}>Auto (server default)</option>
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs leading-6 text-stone-500">
+              {isLoadingModels
+                ? 'Loading installed models from Ollama...'
+                : modelLoadError ?? 'Select an installed model, or leave Auto to use the server default.'}
+            </p>
+          </div>
+
+          <div>
             <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-stone-500">
               Character Size
             </p>
@@ -270,4 +344,29 @@ export function CharacterSheetOverlay() {
       </div>
     </aside>
   )
+}
+
+function mergeModelOptions(installedModels: string[], defaultModel: string | null, selectedModel: string | null) {
+  const seen = new Set<string>()
+  const merged: string[] = []
+  const ordered = [
+    defaultModel,
+    selectedModel,
+    ...FALLBACK_GENERATION_MODELS,
+    ...installedModels,
+  ]
+
+  for (const model of ordered) {
+    if (!model) {
+      continue
+    }
+    const trimmed = model.trim()
+    if (!trimmed || seen.has(trimmed)) {
+      continue
+    }
+    seen.add(trimmed)
+    merged.push(trimmed)
+  }
+
+  return merged
 }
