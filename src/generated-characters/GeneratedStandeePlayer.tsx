@@ -131,7 +131,7 @@ export function GeneratedStandeePlayer({
               color="#f7f2e7"
               alphaMap={alphaTexture ?? undefined}
               transparent
-              alphaTest={0.1}
+              alphaTest={0.03}
               side={THREE.FrontSide}
               roughness={0.92}
               metalness={0}
@@ -144,7 +144,7 @@ export function GeneratedStandeePlayer({
           <meshStandardMaterial
             map={texture}
             transparent
-            alphaTest={0.08}
+            alphaTest={0.03}
             side={THREE.FrontSide}
             roughness={0.8}
             metalness={0}
@@ -161,7 +161,7 @@ export function GeneratedStandeePlayer({
           <meshStandardMaterial
             map={texture}
             transparent
-            alphaTest={0.08}
+            alphaTest={0.03}
             side={THREE.FrontSide}
             roughness={0.8}
             metalness={0}

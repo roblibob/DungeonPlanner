@@ -334,7 +334,7 @@ export function CharacterSheetOverlay() {
               Generation Recipe
             </p>
             <p className="mt-2 text-xs leading-6 text-stone-400">
-              The sheet automatically adds a fixed standee-safe fantasy illustration prompt: full-body subject, centered composition, clean white background, strong silhouette, no scenery, and no extra characters.
+              The sheet adds a fixed standee-safe prompt that asks for a full-body centered subject with a clean green-screen background and explicitly forbids model-made borders, frames, nameplates, text, logos, and watermarks. The white standee contour is added by app postprocessing.
             </p>
             <p className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/70 px-4 py-3 font-mono text-[11px] leading-5 text-stone-400">
               {composedPrompt}

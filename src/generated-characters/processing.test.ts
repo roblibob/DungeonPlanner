@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildOutlineMask, isGreenishBackgroundPixel, removeGreenBackgroundRegions } from './processing'
+import {
+  buildOutlineMask,
+  isGreenishBackgroundPixel,
+  keepDominantSubjectComponent,
+  removeGreenEdgeFringe,
+  removeGreenBackgroundRegions,
+} from './processing'
 
 describe('generated character processing', () => {
   it('recognizes green-screen background colors without matching white border pixels', () => {
@@ -97,5 +103,117 @@ describe('generated character processing', () => {
     expect(outline[(2 * width) + 2]).toBeGreaterThan(0)
     expect(outline[(2 * width) + 2]).toBeLessThan(255)
     expect(outline[0]).toBe(0)
+  })
+
+  it('treats low-alpha fringe as background when building the outline mask', () => {
+    const width = 7
+    const height = 7
+    const mask = new Uint8ClampedArray(width * height)
+    const center = (3 * width) + 3
+    mask[center] = 255
+    mask[(3 * width) + 2] = 8
+    mask[(3 * width) + 4] = 8
+
+    const outline = buildOutlineMask(mask, width, height, 2, 18)
+
+    expect(outline[(3 * width) + 2]).toBeGreaterThan(200)
+    expect(outline[(3 * width) + 4]).toBeGreaterThan(200)
+    expect(outline[center]).toBe(0)
+  })
+
+  it('drops thin edge-connected frame artifacts while keeping the dominant subject component', () => {
+    const width = 12
+    const height = 12
+    const mask = new Uint8ClampedArray(width * height)
+    const imageData = new Uint8ClampedArray(width * height * 4)
+
+    const setPixel = (x: number, y: number, red: number, green: number, blue: number) => {
+      const colorIndex = ((y * width) + x) * 4
+      imageData[colorIndex] = red
+      imageData[colorIndex + 1] = green
+      imageData[colorIndex + 2] = blue
+      imageData[colorIndex + 3] = 255
+      mask[(y * width) + x] = 255
+    }
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+          setPixel(x, y, 255, 255, 255)
+        }
+      }
+    }
+
+    for (let y = 4; y <= 8; y += 1) {
+      for (let x = 4; x <= 7; x += 1) {
+        setPixel(x, y, 42, 42, 42)
+      }
+    }
+
+    keepDominantSubjectComponent(mask, imageData, width, height, 18)
+
+    expect(mask[(0 * width) + 0]).toBe(0)
+    expect(mask[(11 * width) + 11]).toBe(0)
+    expect(mask[(6 * width) + 5]).toBe(255)
+  })
+
+  it('preserves a slender silhouette when removing frame-like components', () => {
+    const width = 15
+    const height = 15
+    const mask = new Uint8ClampedArray(width * height)
+    const imageData = new Uint8ClampedArray(width * height * 4)
+
+    const setPixel = (x: number, y: number, red: number, green: number, blue: number) => {
+      const colorIndex = ((y * width) + x) * 4
+      imageData[colorIndex] = red
+      imageData[colorIndex + 1] = green
+      imageData[colorIndex + 2] = blue
+      imageData[colorIndex + 3] = 255
+      mask[(y * width) + x] = 255
+    }
+
+    for (let x = 0; x < width; x += 1) {
+      setPixel(x, 0, 255, 255, 255)
+    }
+
+    for (let y = 2; y <= 12; y += 1) {
+      setPixel(7, y, 46, 46, 46)
+    }
+
+    keepDominantSubjectComponent(mask, imageData, width, height, 18)
+
+    expect(mask[(0 * width) + 3]).toBe(0)
+    expect(mask[(8 * width) + 7]).toBe(255)
+    expect(mask[(12 * width) + 7]).toBe(255)
+  })
+
+  it('removes green edge fringe but preserves interior green details', () => {
+    const width = 5
+    const height = 5
+    const mask = new Uint8ClampedArray(width * height)
+    const imageData = new Uint8ClampedArray(width * height * 4)
+
+    const setPixel = (x: number, y: number, red: number, green: number, blue: number) => {
+      const colorIndex = ((y * width) + x) * 4
+      imageData[colorIndex] = red
+      imageData[colorIndex + 1] = green
+      imageData[colorIndex + 2] = blue
+      imageData[colorIndex + 3] = 255
+      mask[(y * width) + x] = 255
+    }
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        setPixel(x, y, 44, 44, 44)
+      }
+    }
+    mask[(0 * width) + 2] = 0
+    setPixel(2, 1, 20, 170, 40)
+    setPixel(2, 2, 24, 176, 44)
+
+    removeGreenEdgeFringe(mask, imageData, width, height, 18)
+
+    expect(mask[(1 * width) + 2]).toBe(0)
+    expect(mask[(2 * width) + 2]).toBe(255)
   })
 })
