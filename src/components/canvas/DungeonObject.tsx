@@ -1,6 +1,5 @@
-import { memo, useMemo, useRef, useLayoutEffect } from 'react'
+import { memo, useRef, useLayoutEffect } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
-import * as THREE from 'three'
 import type { Group, PointLight } from 'three'
 import { useDungeonStore, type DungeonObjectRecord } from '../../store/useDungeonStore'
 import { ContentPackInstance } from './ContentPackInstance'
@@ -8,6 +7,10 @@ import { getContentPackAssetById } from '../../content-packs/registry'
 import type { PropLight } from '../../content-packs/types'
 import { registerObject, unregisterObject } from './objectRegistry'
 import type { PlayVisibility } from './playVisibility'
+import { ProjectedGroundDecal } from './ProjectedGroundDecal'
+import { DEFAULT_GENERATED_CHARACTER_SIZE } from '../../generated-characters/types'
+import { getGeneratedCharacterIndicatorSize } from '../../generated-characters/rendering'
+import { shouldRenderLineOfSightLight } from './losRendering'
 
 type DungeonObjectProps = {
   object: DungeonObjectRecord
@@ -29,7 +32,8 @@ export const DungeonObject = memo(function DungeonObject({
   const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const tool = useDungeonStore((state) => state.tool)
   const selected = selection === object.id
-  const visibilityState = visibility.getObjectVisibility(`${object.cell[0]}:${object.cell[1]}`)
+  const visibilityState = visibility.getObjectVisibility(object)
+  const useLineOfSightPostMask = visibility.active && visibility.mask !== null
 
   const groupRef = useRef<Group>(null)
   useLayoutEffect(() => {
@@ -92,37 +96,38 @@ export const DungeonObject = memo(function DungeonObject({
         variantKey={object.cellKey}
         objectProps={object.props}
         visibility={visibilityState}
+        useLineOfSightPostMask={useLineOfSightPostMask}
         userData={{ objectId: object.id }}
         onPointerDown={handlePointerDown}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         variant="prop"
       />
-      {showPlayerSelectionRing && <PlayerSelectionRing />}
-      {light && visibilityState === 'visible' && <PropPointLight light={light} />}
+      {showPlayerSelectionRing && <PlayerSelectionRing assetId={object.assetId} />}
+      {light && shouldRenderLineOfSightLight(visibilityState, useLineOfSightPostMask) && (
+        <PropPointLight light={light} />
+      )}
     </group>
   )
 })
 
-export function PlayerSelectionRing({ color = '#22c55e' }: { color?: string }) {
-  const geometry = useMemo(() => new THREE.RingGeometry(0.32, 0.44, 48), [])
-
+export function PlayerSelectionRing({
+  assetId = null,
+  color = '#d4a72c',
+}: {
+  assetId?: string | null
+  color?: string
+}) {
+  const characterSize = useDungeonStore(
+    (state) => assetId
+      ? (state.generatedCharacters[assetId]?.size ?? DEFAULT_GENERATED_CHARACTER_SIZE)
+      : DEFAULT_GENERATED_CHARACTER_SIZE,
+  )
   return (
-    <mesh
-      geometry={geometry}
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0.02, 0]}
-      renderOrder={3}
-    >
-      <meshBasicMaterial
-        color={color}
-        transparent
-        opacity={0.85}
-        depthWrite={false}
-        polygonOffset
-        polygonOffsetFactor={-1}
-      />
-    </mesh>
+    <ProjectedGroundDecal
+      color={color}
+      size={getGeneratedCharacterIndicatorSize(characterSize)}
+    />
   )
 }
 

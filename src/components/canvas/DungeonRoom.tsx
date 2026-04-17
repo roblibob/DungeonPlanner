@@ -1,5 +1,6 @@
 import { useRef, useMemo, useLayoutEffect } from 'react'
 import type { ReactNode } from 'react'
+import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -20,6 +21,10 @@ import {
 import { getOpeningSegments } from '../../store/openingSegments'
 import { getBuildYOffset, isAnimationActive } from '../../store/buildAnimations'
 import { ContentPackInstance } from './ContentPackInstance'
+import { floorAsset } from '../../content-packs/core/tiles/Floor'
+import { FLOOR_VARIANT_URLS } from '../../content-packs/core/tiles/floorVariants'
+import { buildMergedFloorReceiverGeometry } from './floorReceiverGeometry'
+import { registerDecalReceivers, unregisterDecalReceivers } from './decalReceiverRegistry'
 import { registerObject, unregisterObject } from './objectRegistry'
 import type { PlayVisibility, PlayVisibilityState } from './playVisibility'
 
@@ -196,9 +201,17 @@ function CellGroupRenderer({
     () => deriveRoomWalls(group.cells, paintedCells, suppressedWallKeys),
     [group.cells, paintedCells, suppressedWallKeys],
   )
+  const useLineOfSightPostMask = visibility.active && visibility.mask !== null
 
   return (
     <>
+      {group.floorAssetId === floorAsset.id && (
+        <FloorDecalReceiver
+          receiverId={`floor-receiver:${group.floorAssetId ?? 'none'}:${group.wallAssetId ?? 'none'}:${group.cells.map(getCellKey).sort().join('|')}`}
+          cells={group.cells}
+          blockedFloorCellKeys={blockedFloorCellKeys}
+        />
+      )}
       {group.cells.map((cell) => {
         const key = getCellKey(cell)
         if (blockedFloorCellKeys.has(key)) return null
@@ -209,7 +222,8 @@ function CellGroupRenderer({
               position={cellToWorldPosition(cell)}
               variant="floor"
               variantKey={key}
-              visibility={visibility.mask ? 'visible' : visibility.getCellVisibility(key)}
+              visibility={visibility.getCellVisibility(key)}
+              useLineOfSightPostMask={useLineOfSightPostMask}
             />
           </AnimatedTileGroup>
         )
@@ -231,11 +245,86 @@ function CellGroupRenderer({
               variant="wall"
               variantKey={wall.key}
               visibility={visibility.getWallVisibility(wall.key)}
+              useLineOfSightPostMask={useLineOfSightPostMask}
             />
           </AnimatedTileGroup>
         )
       })}
     </>
+  )
+}
+
+function FloorDecalReceiver({
+  receiverId,
+  cells,
+  blockedFloorCellKeys,
+}: {
+  receiverId: string
+  cells: GridCell[]
+  blockedFloorCellKeys: Set<string>
+}) {
+  const gltfs = useGLTF(FLOOR_VARIANT_URLS as unknown as string[])
+  const showProjectionDebugMesh = useDungeonStore((state) => state.showProjectionDebugMesh)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const geometry = useMemo(() => buildMergedFloorReceiverGeometry({
+    cells,
+    blockedFloorCellKeys,
+    variantScenes: gltfs.map((gltf) => gltf.scene),
+  }), [blockedFloorCellKeys, cells, gltfs])
+  const projectionReceiverMesh = useMemo(() => {
+    if (!geometry) {
+      return null
+    }
+
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial())
+    mesh.matrixAutoUpdate = false
+    mesh.updateMatrixWorld(true)
+    return mesh
+  }, [geometry])
+
+  useLayoutEffect(() => {
+    if (!meshRef.current || !projectionReceiverMesh) {
+      return
+    }
+
+    meshRef.current.userData.ignoreLosRaycast = true
+    meshRef.current.raycast = () => {}
+    registerDecalReceivers(receiverId, [projectionReceiverMesh])
+
+    return () => unregisterDecalReceivers(receiverId)
+  }, [projectionReceiverMesh, receiverId])
+
+  useLayoutEffect(() => () => geometry?.dispose(), [geometry])
+  useLayoutEffect(
+    () => () => {
+      if (projectionReceiverMesh?.material instanceof THREE.Material) {
+        projectionReceiverMesh.material.dispose()
+      }
+    },
+    [projectionReceiverMesh],
+  )
+
+  if (!geometry) {
+    return null
+  }
+
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      visible={showProjectionDebugMesh}
+      renderOrder={showProjectionDebugMesh ? 4 : -1}
+    >
+      <meshBasicMaterial
+        color="#8d8d8d"
+        transparent={false}
+        opacity={1}
+        depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-4}
+        toneMapped={false}
+      />
+    </mesh>
   )
 }
 
@@ -339,6 +428,8 @@ function OpeningRenderer({
   const selectObject = useDungeonStore((state) => state.selectObject)
   const ppEnabled = useDungeonStore((state) => state.postProcessing.enabled)
   const selected = selection === opening.id
+  const useLineOfSightPostMask = visibility.active && visibility.mask !== null
+  const wallVisibility = visibility.getWallVisibility(opening.wallKey)
 
   const groupRef = useRef<THREE.Group>(null)
   useLayoutEffect(() => {
@@ -380,7 +471,8 @@ function OpeningRenderer({
           assetId={opening.assetId}
           selected={selected && !ppEnabled}
           variant="wall"
-          visibility={visibility.getWallVisibility(opening.wallKey)}
+          visibility={wallVisibility}
+          useLineOfSightPostMask={useLineOfSightPostMask}
           onClick={handleClick}
         />
       ) : (
