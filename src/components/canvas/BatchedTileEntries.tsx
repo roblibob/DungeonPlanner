@@ -209,21 +209,27 @@ function MergedTileMesh({
 }) {
   const ref = useRef<THREE.Mesh>(null)
 
+  // Create a shared depth material for shadows to avoid WebGPU pipeline issues
+  const depthMaterial = useMemo(() => {
+    const mat = new THREE.MeshDepthMaterial()
+    mat.depthPacking = THREE.RGBADepthPacking
+    return mat
+  }, [])
+
   useLayoutEffect(() => {
     if (ref.current) {
       setLosLayers(ref.current, visibility)
+      // Set custom shadow materials to avoid WebGPU crashes with cloned materials
+      ref.current.customDepthMaterial = depthMaterial
     }
-  }, [visibility])
+  }, [visibility, depthMaterial])
 
   return (
     <mesh
       ref={ref}
       geometry={geometry}
       material={material}
-      // WebGPURenderer currently crashes in the merged-tile shadow pass with
-      // cloned GLTF materials. Keep batched tiles visible and receiving shadows
-      // while we avoid the unstable cast-shadow pipeline.
-      castShadow={false}
+      castShadow={true}
       receiveShadow={receiveShadow}
     />
   )
