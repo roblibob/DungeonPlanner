@@ -219,7 +219,11 @@ export function isGreenishBackgroundPixel(red: number, green: number, blue: numb
 function isLikelyGreenScreenSpillPixel(red: number, green: number, blue: number) {
   const greenLead = green - Math.max(red, blue)
   const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
-  return green >= 135 && greenLead >= 28 && chroma >= 28
+  return green >= 155
+    && greenLead >= 52
+    && chroma >= 44
+    && red <= 95
+    && blue <= 95
 }
 
 function isWhiteBorderPixel(red: number, green: number, blue: number) {
@@ -306,7 +310,7 @@ export function removeGreenBackgroundRegions(
   threshold: number,
 ) {
   const visited = new Uint8Array(mask.length)
-  const enclosedPocketAreaLimit = Math.max(16, Math.round(width * height * 0.02))
+  const enclosedPocketAreaLimit = Math.max(16, Math.round(width * height * 0.006))
 
   const isOpaqueGreen = (pixelIndex: number) => {
     if (mask[pixelIndex] <= threshold) {

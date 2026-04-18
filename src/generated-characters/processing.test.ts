@@ -164,6 +164,54 @@ describe('generated character processing', () => {
     expect(mask[(5 * width) + 5]).toBe(0)
   })
 
+  it('preserves saturated green character regions that are not neon greenscreen spill', () => {
+    const width = 9
+    const height = 9
+    const mask = new Uint8ClampedArray(width * height).fill(255)
+    const imageData = new Uint8ClampedArray(width * height * 4)
+
+    const setPixel = (x: number, y: number, red: number, green: number, blue: number) => {
+      const index = ((y * width) + x) * 4
+      imageData[index] = red
+      imageData[index + 1] = green
+      imageData[index + 2] = blue
+      imageData[index + 3] = 255
+    }
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        setPixel(x, y, 44, 44, 44)
+      }
+    }
+
+    const greenSkinSamples: Array<[number, number, number]> = [
+      [112, 172, 80],
+      [96, 160, 72],
+      [124, 186, 94],
+      [105, 168, 76],
+    ]
+    let sampleIndex = 0
+    for (let y = 3; y <= 5; y += 1) {
+      for (let x = 3; x <= 5; x += 1) {
+        const sample = greenSkinSamples[sampleIndex % greenSkinSamples.length]
+        setPixel(x, y, sample[0], sample[1], sample[2])
+        sampleIndex += 1
+      }
+    }
+
+    removeGreenBackgroundRegions(mask, imageData, width, height, 18)
+
+    expect(mask[(3 * width) + 3]).toBe(255)
+    expect(mask[(3 * width) + 4]).toBe(255)
+    expect(mask[(3 * width) + 5]).toBe(255)
+    expect(mask[(4 * width) + 3]).toBe(255)
+    expect(mask[(4 * width) + 4]).toBe(255)
+    expect(mask[(4 * width) + 5]).toBe(255)
+    expect(mask[(5 * width) + 3]).toBe(255)
+    expect(mask[(5 * width) + 4]).toBe(255)
+    expect(mask[(5 * width) + 5]).toBe(255)
+  })
+
   it('builds an outline mask with a softened outer edge instead of binary steps', () => {
     const width = 9
     const height = 9
