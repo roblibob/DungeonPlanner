@@ -30,6 +30,7 @@ function createSnapshot() {
       },
     },
     paintedCells: {},
+    blockedCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},
@@ -116,7 +117,7 @@ describe('asset reference sanitization', () => {
       },
     })
 
-    expect(sanitized.selectedAssetIds.floor).toBe(getDefaultAssetIdByCategory('floor'))
+    expect(sanitized.selectedAssetIds?.floor).toBe(getDefaultAssetIdByCategory('floor'))
     expect(sanitized.floors?.['floor-1'].snapshot.selectedAssetIds.wall).toBe(
       getDefaultAssetIdByCategory('wall'),
     )

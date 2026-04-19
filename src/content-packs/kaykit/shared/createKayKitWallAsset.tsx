@@ -2,7 +2,11 @@
 import { useMemo } from 'react'
 import { useGLTF } from '@react-three/drei'
 import type { ContentPackAsset, ContentPackComponentProps } from '../../types'
-import { KAYKIT_BASE_SCALE, resolveKayKitAssetUrl, resolveKayKitModelAssetUrl } from './createKayKitAsset'
+import {
+  KAYKIT_BASE_SCALE,
+  requireKayKitModelAssetUrl,
+  resolveKayKitAssetUrl,
+} from './createKayKitAsset'
 
 type KayKitWallAssetDefinition = {
   id: string
@@ -26,8 +30,8 @@ const WALL_DEFAULT_TRANSFORM = {
 }
 
 export function createKayKitWallAsset(definition: KayKitWallAssetDefinition): ContentPackAsset {
-  const assetUrl = resolveKayKitModelAssetUrl(definition.modelName)
-  const cornerAssetUrl = resolveKayKitModelAssetUrl(definition.cornerModelName ?? 'wall_corner_small')
+  const assetUrl = requireKayKitModelAssetUrl(definition.modelName)
+  const cornerAssetUrl = requireKayKitModelAssetUrl(definition.cornerModelName ?? 'wall_corner_small')
   const thumbnailUrl = resolveKayKitAssetUrl(definition.thumbnailName ?? definition.modelName, 'png')
 
   function KayKitWallVariant({ objectProps, ...props }: ContentPackComponentProps) {

@@ -72,6 +72,8 @@ export type Room = {
   wallAssetId: string | null
 }
 
+export type MapMode = 'indoor' | 'outdoor'
+
 export type PaintedCellRecord = {
   cell: GridCell
   layerId: string
@@ -79,6 +81,12 @@ export type PaintedCellRecord = {
 }
 
 export type PaintedCells = Record<string, PaintedCellRecord>
+export type BlockedCellRecord = {
+  cell: GridCell
+  layerId: string
+  roomId: null
+}
+export type BlockedCells = Record<string, BlockedCellRecord>
 
 export type OpeningRecord = {
   id: string
@@ -113,6 +121,7 @@ export type DungeonObjectRecord = {
 
 type DungeonSnapshot = {
   paintedCells: PaintedCells
+  blockedCells: BlockedCells
   exploredCells: Record<string, true>
   floorTileAssetIds: Record<string, string>
   wallSurfaceAssetIds: Record<string, string>
@@ -162,6 +171,8 @@ export type WallConnectionMode = 'wall' | 'door' | 'open'
 export type FloorViewMode = 'active' | 'scene'
 
 type DungeonState = DungeonSnapshot & {
+  mapMode: MapMode
+  outdoorTimeOfDay: number
   cameraMode: CameraMode
   isPaintingStrokeActive: boolean
   isObjectDragActive: boolean
@@ -187,6 +198,8 @@ type DungeonState = DungeonSnapshot & {
   future: DungeonSnapshot[]
   paintCells: (cells: GridCell[]) => number
   eraseCells: (cells: GridCell[]) => number
+  paintBlockedCells: (cells: GridCell[]) => number
+  eraseBlockedCells: (cells: GridCell[]) => number
   placeObject: (input: PlaceObjectInput) => string | null
   moveObject: (id: string, input: MoveObjectInput) => boolean
   setObjectProps: (id: string, props: Record<string, unknown>) => boolean
@@ -200,6 +213,7 @@ type DungeonState = DungeonSnapshot & {
   clearSelection: () => void
   selectObject: (id: string | null) => void
   setTool: (tool: DungeonTool) => void
+  setMapMode: (mode: MapMode) => void
   selectRoom: (id: string | null) => void
   setRoomResizeHandleActive: (active: boolean) => void
   setRoomEditMode: (mode: RoomEditMode) => void
@@ -213,6 +227,7 @@ type DungeonState = DungeonSnapshot & {
   setObjectDragActive: (active: boolean) => void
   setSceneLightingIntensity: (intensity: number) => void
   setPostProcessing: (settings: Partial<PostProcessingSettings>) => void
+  setOutdoorTimeOfDay: (value: number) => void
   setShowGrid: (show: boolean) => void
   setShowLosDebugMask: (show: boolean) => void
   setShowLosDebugRays: (show: boolean) => void
@@ -232,7 +247,7 @@ type DungeonState = DungeonSnapshot & {
   undo: () => void
   redo: () => void
   reset: () => void
-  newDungeon: () => void
+  newDungeon: (mode?: MapMode) => void
   // Layer actions
   addLayer: (name: string) => string
   removeLayer: (id: string) => void
@@ -294,6 +309,12 @@ function cloneSnapshot(snapshot: DungeonSnapshot): DungeonSnapshot {
       Object.entries(snapshot.paintedCells).map(([key, record]) => [
         key,
         { cell: [...record.cell] as GridCell, layerId: record.layerId, roomId: record.roomId },
+      ]),
+    ),
+    blockedCells: Object.fromEntries(
+      Object.entries(snapshot.blockedCells).map(([key, record]) => [
+        key,
+        { cell: [...record.cell] as GridCell, layerId: record.layerId, roomId: null },
       ]),
     ),
     exploredCells: { ...snapshot.exploredCells },
@@ -358,6 +379,7 @@ function createEmptySnapshot(): DungeonSnapshot {
   const defaultLayer = createDefaultLayer()
   return {
     paintedCells: {},
+    blockedCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},
@@ -711,6 +733,8 @@ export const useDungeonStore = create<DungeonState>()(
 
   return ({
   ...initialSnapshot,
+  mapMode: 'indoor' as MapMode,
+  outdoorTimeOfDay: 0.5,
   dungeonName: 'My Dungeon',
   cameraMode: 'orbit',
   isPaintingStrokeActive: false,
@@ -817,6 +841,59 @@ export const useDungeonStore = create<DungeonState>()(
     })
 
     return nextCells.length
+  },
+  paintBlockedCells: (cells) => {
+    const state = get()
+    const nextCells = cells.filter((cell) => !state.blockedCells[getCellKey(cell)])
+    if (nextCells.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      const blockedCells = { ...current.blockedCells }
+      nextCells.forEach((cell) => {
+        blockedCells[getCellKey(cell)] = {
+          cell: [...cell] as GridCell,
+          layerId: current.activeLayerId,
+          roomId: null,
+        }
+      })
+      return {
+        ...current,
+        blockedCells,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+    return nextCells.length
+  },
+  eraseBlockedCells: (cells) => {
+    const state = get()
+    const nextKeys = cells
+      .map((cell) => getCellKey(cell))
+      .filter((key) => Boolean(state.blockedCells[key]))
+
+    if (nextKeys.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      const blockedCells = { ...current.blockedCells }
+      nextKeys.forEach((key) => {
+        delete blockedCells[key]
+      })
+
+      return {
+        ...current,
+        blockedCells,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+
+    return nextKeys.length
   },
   eraseCells: (cells) => {
     const state = get()
@@ -960,7 +1037,10 @@ export const useDungeonStore = create<DungeonState>()(
       return false
     }
 
-    if (!state.paintedCells[getCellKey(input.cell)]) {
+    if (state.mapMode !== 'outdoor' && !state.paintedCells[getCellKey(input.cell)]) {
+      return false
+    }
+    if (state.mapMode === 'outdoor' && state.blockedCells[getCellKey(input.cell)]) {
       return false
     }
 
@@ -1233,8 +1313,11 @@ export const useDungeonStore = create<DungeonState>()(
   },
   setTool: (tool) => {
     const state = get()
+    const normalizedTool = state.mapMode === 'outdoor' && tool === 'opening'
+      ? 'prop'
+      : tool
 
-    if (state.tool === tool) {
+    if (state.tool === normalizedTool) {
       return
     }
 
@@ -1242,13 +1325,16 @@ export const useDungeonStore = create<DungeonState>()(
 
     set((current) => ({
       ...current,
-      tool,
-      isRoomResizeHandleActive: tool === 'room' ? current.isRoomResizeHandleActive : false,
-      cameraPreset: tool === 'room' ? 'top-down' : current.cameraPreset,
-      activeCameraMode: tool === 'room' ? 'top-down' : current.activeCameraMode,
+      tool: normalizedTool,
+      isRoomResizeHandleActive: normalizedTool === 'room' ? current.isRoomResizeHandleActive : false,
+      cameraPreset: normalizedTool === 'room' ? 'top-down' : current.cameraPreset,
+      activeCameraMode: normalizedTool === 'room' ? 'top-down' : current.activeCameraMode,
       history: [...current.history, previousSnapshot],
       future: [],
     }))
+  },
+  setMapMode: (mode) => {
+    set((state) => (state.mapMode === mode ? state : { ...state, mapMode: mode }))
   },
   selectRoom: (id) => {
     set((current) => ({
@@ -1420,6 +1506,10 @@ export const useDungeonStore = create<DungeonState>()(
       ...state,
       postProcessing: normalizePostProcessingSettings({ ...state.postProcessing, ...settings }),
     }))
+  },
+  setOutdoorTimeOfDay: (value) => {
+    const clamped = Math.max(0, Math.min(1, value))
+    set((state) => ({ ...state, outdoorTimeOfDay: clamped }))
   },
   setShowGrid: (show) => {
     set((state) => ({ ...state, showGrid: show }))
@@ -1594,6 +1684,8 @@ export const useDungeonStore = create<DungeonState>()(
       set((state) => ({
         ...state,
         ...createEmptySnapshot(),
+        mapMode: 'indoor',
+        outdoorTimeOfDay: 0.5,
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
         selectedRoomId: null,
@@ -1603,6 +1695,7 @@ export const useDungeonStore = create<DungeonState>()(
           wall: getDefaultAssetIdByCategory('wall'),
         },
         floorViewMode: 'active',
+        tool: 'move',
         characterSheet: { open: false, assetId: null },
         activeCameraMode: 'perspective',
         cameraPreset: null,
@@ -1611,12 +1704,14 @@ export const useDungeonStore = create<DungeonState>()(
     }))
   },
 
-  newDungeon: () => {
+  newDungeon: (mode = 'indoor') => {
     const INITIAL_ID = 'floor-1'
     const fresh = createEmptySnapshot()
     set({
       // Snapshot (rooms, cells, objects, etc.)
        ...fresh,
+        mapMode: mode,
+        outdoorTimeOfDay: 0.5,
         // UI / tool state
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
@@ -1627,6 +1722,7 @@ export const useDungeonStore = create<DungeonState>()(
           wall: getDefaultAssetIdByCategory('wall'),
         },
         cameraMode: 'orbit',
+        tool: mode === 'outdoor' ? 'room' : fresh.tool,
       floorViewMode: 'active',
       characterSheet: { open: false, assetId: null },
       activeCameraMode: 'perspective',
@@ -2370,6 +2466,8 @@ export const useDungeonStore = create<DungeonState>()(
     }
     const json = serializeDungeon({
       name: state.dungeonName,
+      mapMode: state.mapMode,
+      outdoorTimeOfDay: state.outdoorTimeOfDay,
       sceneLighting: state.sceneLighting,
       postProcessing: state.postProcessing,
       layers: state.layers,
@@ -2377,6 +2475,7 @@ export const useDungeonStore = create<DungeonState>()(
       activeLayerId: state.activeLayerId,
       rooms: state.rooms,
       paintedCells: state.paintedCells,
+      blockedCells: state.blockedCells,
       exploredCells: state.exploredCells,
       floorTileAssetIds: state.floorTileAssetIds,
       wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -2405,6 +2504,8 @@ export const useDungeonStore = create<DungeonState>()(
       set((current) => ({
         ...current,
         ...parsed,
+        mapMode: parsed.mapMode ?? 'indoor',
+        outdoorTimeOfDay: parsed.outdoorTimeOfDay ?? 0.5,
         dungeonName: parsed.name ?? current.dungeonName,
         generatedCharacters: normalizeGeneratedCharacters(current.generatedCharacters),
         characterSheet: { open: false, assetId: null },
@@ -2434,6 +2535,7 @@ export const useDungeonStore = create<DungeonState>()(
       partialize: (state) => ({
         dungeonName: state.dungeonName,
         paintedCells: state.paintedCells,
+        blockedCells: state.blockedCells,
         exploredCells: state.exploredCells,
         floorTileAssetIds: state.floorTileAssetIds,
         wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -2447,6 +2549,8 @@ export const useDungeonStore = create<DungeonState>()(
         nextRoomNumber: state.nextRoomNumber,
         sceneLighting: state.sceneLighting,
         postProcessing: state.postProcessing,
+        mapMode: state.mapMode,
+        outdoorTimeOfDay: state.outdoorTimeOfDay,
         selectedAssetIds: state.selectedAssetIds,
         generatedCharacters: state.generatedCharacters,
         floors: state.floors,

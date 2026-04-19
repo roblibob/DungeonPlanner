@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { getContentPackAssetById } from '../../content-packs/registry'
 import { GRID_SIZE, getCellKey, type GridCell } from '../../hooks/useSnapToGrid'
 import { getOpeningSegments } from '../../store/openingSegments'
-import { useDungeonStore, type OpeningRecord, type PaintedCells } from '../../store/useDungeonStore'
+import { useDungeonStore, type BlockedCells, type OpeningRecord, type PaintedCells } from '../../store/useDungeonStore'
 import type { DungeonObjectRecord, Layer } from '../../store/useDungeonStore'
 import { getRegisteredObject, useObjectRegistryVersion } from './objectRegistry'
 import { isGeneratedCharacterAssetId } from '../../content-packs/runtimeRegistry'
@@ -106,7 +106,9 @@ const WALL_DIRECTIONS: Record<WallDirection, { delta: GridCell; opposite: WallDi
 
 export function usePlayVisibility(): PlayVisibility {
   const tool = useDungeonStore((state) => state.tool)
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const paintedCells = useDungeonStore((state) => state.paintedCells)
+  const blockedCells = useDungeonStore((state) => state.blockedCells)
   const exploredCells = useDungeonStore((state) => state.exploredCells)
   const wallOpenings = useDungeonStore((state) => state.wallOpenings)
   const placedObjects = useDungeonStore((state) => state.placedObjects)
@@ -120,18 +122,21 @@ export function usePlayVisibility(): PlayVisibility {
       return null
     }
     const playerOrigins = Object.values(placedObjects)
-      .filter((object) => isVisiblePlayerOrigin(object, paintedCells, layers, generatedCharacters))
+      .filter((object) => isVisiblePlayerOrigin(object, mapMode === 'outdoor' ? null : paintedCells, layers, generatedCharacters))
       .map((object) => object.cell)
+    const visibilityCells = mapMode === 'outdoor'
+      ? buildOutdoorVisibilityCells(playerOrigins, blockedCells, PLAYER_VISION_RANGE)
+      : paintedCells
     const blockerLookup = getBlockingObjectIdsByCell(placedObjects, layers)
     return {
-      paintedCells,
+      paintedCells: visibilityCells,
       wallOpenings,
       origins: playerOrigins,
       range: PLAYER_VISION_RANGE,
       blockingCellKeys: [...blockerLookup.keys()],
       blockerLookupEntries: [...blockerLookup.entries()],
     } satisfies PlayVisibilityWorkerInput
-  }, [generatedCharacters, layers, objectRegistryVersion, paintedCells, placedObjects, tool, wallOpenings])
+  }, [blockedCells, generatedCharacters, layers, mapMode, objectRegistryVersion, paintedCells, placedObjects, tool, wallOpenings])
   const [visibilityData, setVisibilityData] = useState<PlayVisibilityComputation>({
     visibleCellKeys: [],
     mask: null,
@@ -241,7 +246,7 @@ function withExploredCellKeys(
 
 export function isVisiblePlayerOrigin(
   object: DungeonObjectRecord,
-  paintedCells: PaintedCells,
+  paintedCells: PaintedCells | null,
   layers: Record<string, Layer>,
   generatedCharacters: Record<string, GeneratedCharacterRecord>,
 ) {
@@ -254,8 +259,36 @@ export function isVisiblePlayerOrigin(
     object.type === 'player' &&
     generatedCharacter?.kind !== 'npc' &&
     layers[object.layerId]?.visible !== false &&
-    Boolean(paintedCells[getCellKey(object.cell)])
+    (paintedCells ? Boolean(paintedCells[getCellKey(object.cell)]) : true)
   )
+}
+
+function buildOutdoorVisibilityCells(
+  origins: GridCell[],
+  blockedCells: BlockedCells,
+  range: number,
+): PaintedCells {
+  const cells: PaintedCells = {}
+  const maxOffset = Math.ceil(range)
+  const rangeSquared = range * range
+
+  origins.forEach((origin) => {
+    for (let deltaZ = -maxOffset; deltaZ <= maxOffset; deltaZ += 1) {
+      for (let deltaX = -maxOffset; deltaX <= maxOffset; deltaX += 1) {
+        if (deltaX * deltaX + deltaZ * deltaZ > rangeSquared) {
+          continue
+        }
+        const cell: GridCell = [origin[0] + deltaX, origin[1] + deltaZ]
+        const key = getCellKey(cell)
+        if (blockedCells[key]) {
+          continue
+        }
+        cells[key] = { cell, layerId: 'default', roomId: null }
+      }
+    }
+  })
+
+  return cells
 }
 
 export function getObjectVisibilityState(

@@ -16,6 +16,7 @@ function emptyFloorSnapshot() {
     activeLayerId: 'default',
     rooms: {},
     paintedCells: {},
+    blockedCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},
@@ -41,6 +42,8 @@ function baseState(): SerializableState {
   const groundId = 'floor-1'
   return {
     name: 'Test Dungeon',
+    mapMode: 'indoor',
+    outdoorTimeOfDay: 0.5,
     sceneLighting: { intensity: 1.5 },
     postProcessing: { ...DEFAULT_POST_PROCESSING_SETTINGS },
     ...emptyFloorSnapshot(),
@@ -65,6 +68,16 @@ describe('serializeDungeon / deserializeDungeon roundtrip', () => {
     expect(result!.postProcessing.bokehScale).toBe(0.5)
   })
 
+  it('preserves map mode and outdoor time of day', () => {
+    const state = baseState()
+    state.mapMode = 'outdoor'
+    state.outdoorTimeOfDay = 0.8
+    const result = deserializeDungeon(serializeDungeon(state))
+    expect(result).not.toBeNull()
+    expect(result!.mapMode).toBe('outdoor')
+    expect(result!.outdoorTimeOfDay).toBe(0.8)
+  })
+
   it('preserves painted cells', () => {
     const state = baseState()
     state.floors!['floor-1'].snapshot.paintedCells['2:3'] = {
@@ -78,6 +91,20 @@ describe('serializeDungeon / deserializeDungeon roundtrip', () => {
     // Active floor data is returned at top level for the store to spread
     const cells = result!.paintedCells ?? result!.floors?.['floor-1']?.snapshot?.paintedCells
     expect(cells?.['2:3']).toMatchObject({ cell: [2, 3] })
+  })
+
+  it('preserves blocked cells', () => {
+    const state = baseState()
+    state.floors!['floor-1'].snapshot.blockedCells['4:5'] = {
+      cell: [4, 5],
+      layerId: 'default',
+      roomId: null,
+    }
+
+    const result = deserializeDungeon(serializeDungeon(state))
+    expect(result).not.toBeNull()
+    const blocked = result!.blockedCells ?? result!.floors?.['floor-1']?.snapshot?.blockedCells
+    expect(blocked?.['4:5']).toMatchObject({ cell: [4, 5], layerId: 'default' })
   })
 
   it('preserves explored cells', () => {
@@ -250,5 +277,7 @@ describe('deserializeDungeon version migrations', () => {
     const result = deserializeDungeon(v1File)
     expect(result).not.toBeNull()
     expect(result!.name).toBe('Very Old')
+    expect(result!.mapMode).toBe('indoor')
+    expect(result!.outdoorTimeOfDay).toBe(0.5)
   })
 })

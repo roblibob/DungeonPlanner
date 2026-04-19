@@ -19,6 +19,7 @@ import {
   useDungeonStore,
   type DungeonTool,
   type DungeonObjectRecord,
+  type MapMode,
   type PaintedCellRecord,
   type Room,
   type WallConnectionMode,
@@ -52,9 +53,13 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const surfaceRaycasterRef = useRef(new THREE.Raycaster())
   const surfacePointerRef = useRef(new THREE.Vector2())
   const paintedCells = useDungeonStore((state) => state.paintedCells)
+  const blockedCells = useDungeonStore((state) => state.blockedCells)
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const placedObjects = useDungeonStore((state) => state.placedObjects)
   const paintCells = useDungeonStore((state) => state.paintCells)
   const eraseCells = useDungeonStore((state) => state.eraseCells)
+  const paintBlockedCells = useDungeonStore((state) => state.paintBlockedCells)
+  const eraseBlockedCells = useDungeonStore((state) => state.eraseBlockedCells)
   const setFloorTileAsset = useDungeonStore((state) => state.setFloorTileAsset)
   const setWallSurfaceAsset = useDungeonStore((state) => state.setWallSurfaceAsset)
   const placeObject = useDungeonStore((state) => state.placeObject)
@@ -112,6 +117,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const openPassageBrushActiveRef = useRef(false)
   const openPassageBrushWallKeysRef = useRef<string[]>([])
   const paintedCellsRef = useRef(paintedCells)
+  const blockedCellsRef = useRef(blockedCells)
   const placementOrientationKey = `${selectedPropAssetId ?? ''}:${selectedCharacterAssetId ?? ''}:${selectedOpeningAssetId ?? ''}:${wallConnectionMode}`
   const [placementOrientation, setPlacementOrientation] = useState({
     key: placementOrientationKey,
@@ -130,6 +136,9 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   useEffect(() => {
     paintedCellsRef.current = paintedCells
   }, [paintedCells])
+  useEffect(() => {
+    blockedCellsRef.current = blockedCells
+  }, [blockedCells])
 
   const resolvePlacementSurfaceHit = useEffectEvent((pointerEvent: PointerEvent) => {
     const rect = gl.domElement.getBoundingClientRect()
@@ -147,8 +156,11 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       surfaceRaycasterRef.current.intersectObjects(scene.children, true),
       paintedCells,
       placedObjects,
+      mapMode,
     )
   })
+
+  const roomBrushCells = mapMode === 'outdoor' ? blockedCells : paintedCells
 
   // R key: rotates floor-connected assets; flips wall-connected openings 180°
   useEffect(() => {
@@ -227,7 +239,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
 
     return getRoomPreviewCells({
       hoveredCell,
-      paintedCells,
+      paintedCells: roomBrushCells,
       strokeCurrentCell,
       strokeMode,
       strokeStartCell,
@@ -238,7 +250,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     hoveredCell,
     roomEditMode,
     isRoomResizeHandleActive,
-    paintedCells,
+    roomBrushCells,
     strokeCurrentCell,
     strokeMode,
     strokeStartCell,
@@ -260,18 +272,26 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
 
     const cells = filterStrokeCells(
       getRectangleCells(startCell, currentCell),
-      paintedCellsRef.current,
+      mapMode === 'outdoor' ? blockedCellsRef.current : paintedCellsRef.current,
       mode,
     )
 
     if (cells.length > 0) {
       if (mode === 'paint') {
-        paintCells(cells)
+        if (mapMode === 'outdoor') {
+          paintBlockedCells(cells)
+        } else {
+          paintCells(cells)
+        }
         // Cascade FROM the stroke start corner TOWARD the release corner (opposite diagonal).
         // Tiles near where you first clicked appear first.
         triggerBuild(cells, startCell)
       } else {
-        eraseCells(cells)
+        if (mapMode === 'outdoor') {
+          eraseBlockedCells(cells)
+        } else {
+          eraseCells(cells)
+        }
       }
     }
 
@@ -352,7 +372,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         if (isFloorOpening) {
           // Stairs and other floor-connected openings use prop-style placement
           const rawPlacement = selectedOpeningAsset
-            ? getPropPlacement(selectedOpeningAsset, point, paintedCells, surfaceHit)
+            ? getPropPlacement(selectedOpeningAsset, point, paintedCells, surfaceHit, mapMode)
             : null
           const propPlacement = applyFloorRotation(rawPlacement, floorRotationIndex * (Math.PI / 2))
 
@@ -428,7 +448,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       const activeAsset = tool === 'character' ? selectedCharacterAsset : selectedPropAsset
       const activeAssetId = tool === 'character' ? selectedCharacterAssetId : selectedPropAssetId
       const rawPlacement = activeAsset
-        ? getPropPlacement(activeAsset, point, paintedCells, surfaceHit)
+        ? getPropPlacement(activeAsset, point, paintedCells, surfaceHit, mapMode)
         : null
       const propPlacement = applyFloorRotation(rawPlacement, floorRotationIndex * (Math.PI / 2))
 
@@ -475,6 +495,10 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     }
 
     if (tool === 'room') {
+      if (mapMode === 'outdoor' && roomEditMode !== 'rooms') {
+        return
+      }
+
       if (roomEditMode === 'floor-variants') {
         const cellKey = getCellKey(snapped.cell)
         if (!paintedCells[cellKey]) {
@@ -506,15 +530,17 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         return
       }
 
-      const hoveredRoomId = paintedCells[getCellKey(snapped.cell)]?.roomId ?? null
+      if (mapMode !== 'outdoor') {
+        const hoveredRoomId = paintedCells[getCellKey(snapped.cell)]?.roomId ?? null
 
-      if (event.button === 0 && hoveredRoomId) {
-        selectRoom(hoveredRoomId)
-        return
-      }
+        if (event.button === 0 && hoveredRoomId) {
+          selectRoom(hoveredRoomId)
+          return
+        }
 
-      if (event.button === 0 && !hoveredRoomId) {
-        selectRoom(null)
+        if (event.button === 0 && !hoveredRoomId) {
+          selectRoom(null)
+        }
       }
     }
 
@@ -631,12 +657,12 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
           propPlacement={(() => {
             if (tool === 'prop' && selectedPropAsset && hoveredPoint)
               return applyFloorRotation(
-                getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells, hoveredSurfaceHit),
+                getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells, hoveredSurfaceHit, mapMode),
                 floorRotationIndex * (Math.PI / 2),
               )
             if (tool === 'character' && selectedCharacterAsset && hoveredPoint)
               return applyFloorRotation(
-                getPropPlacement(selectedCharacterAsset, hoveredPoint, paintedCells, hoveredSurfaceHit),
+                getPropPlacement(selectedCharacterAsset, hoveredPoint, paintedCells, hoveredSurfaceHit, mapMode),
                 floorRotationIndex * (Math.PI / 2),
               )
             if (
@@ -646,7 +672,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
               openingToolMode === 'floor-asset'
             )
               return applyFloorRotation(
-                getPropPlacement(selectedOpeningAsset, hoveredPoint, paintedCells, hoveredSurfaceHit),
+                getPropPlacement(selectedOpeningAsset, hoveredPoint, paintedCells, hoveredSurfaceHit, mapMode),
                 floorRotationIndex * (Math.PI / 2),
               )
             return null
@@ -975,6 +1001,7 @@ function findPlacementSurfaceHit(
   intersections: THREE.Intersection[],
   paintedCells: Record<string, PaintedCellRecord>,
   placedObjects: Record<string, DungeonObjectRecord>,
+  mapMode: MapMode,
 ): PlacementSurfaceHit | null {
   for (const intersection of intersections) {
     const objectId = raycastObjectId(intersection.object)
@@ -987,7 +1014,7 @@ function findPlacementSurfaceHit(
       continue
     }
     const supportCellKey = placedObject.supportCellKey ?? getCellKey(placedObject.cell)
-    if (!paintedCells[supportCellKey]) {
+    if (mapMode !== 'outdoor' && !paintedCells[supportCellKey]) {
       continue
     }
 
@@ -1075,6 +1102,7 @@ function getPropPlacement(
   point: { x: number; y: number; z: number },
   paintedCells: Record<string, PaintedCellRecord>,
   surfaceHit: PlacementSurfaceHit | null,
+  mapMode: MapMode,
 ): PropPlacement | null {
   const snapped = snapWorldPointToGrid(point)
   const connector = asset.metadata?.connectsTo ?? 'FLOOR'
@@ -1095,7 +1123,7 @@ function getPropPlacement(
       }
     }
 
-    if (!paintedCells[snapped.key]) {
+    if (mapMode !== 'outdoor' && !paintedCells[snapped.key]) {
       return null
     }
 
@@ -1113,7 +1141,7 @@ function getPropPlacement(
     }
   }
 
-  if (!paintedCells[snapped.key]) {
+  if (mapMode !== 'outdoor' && !paintedCells[snapped.key]) {
     return null
   }
 
@@ -1132,6 +1160,10 @@ function getPropPlacement(
       localPosition: null,
       localRotation: null,
     }
+  }
+
+  if (mapMode === 'outdoor') {
+    return null
   }
 
   const localX = point.x - cellCenter[0]

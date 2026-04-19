@@ -12,10 +12,12 @@ import {
   normalizePostProcessingSettings,
 } from '../postprocessing/tiltShiftMath'
 import type {
+  BlockedCells,
   DungeonObjectRecord,
   DungeonObjectType,
   FloorRecord,
   Layer,
+  MapMode,
   OpeningRecord,
   PaintedCells,
   Room,
@@ -23,7 +25,7 @@ import type {
 import type { GridCell } from '../hooks/useSnapToGrid'
 import { getCellKey } from '../hooks/useSnapToGrid'
 
-const CURRENT_VERSION = 9
+const CURRENT_VERSION = 10
 
 // ── Serialized shapes (compact, no redundant keys) ────────────────────────────
 
@@ -64,6 +66,11 @@ type SerializedFloor = {
   activeLayerId: string
   rooms: Room[]
   cells: SerializedCell[]
+  blockedCells?: Array<{
+    x: number
+    z: number
+    layerId: string
+  }>
   exploredCells: string[]
   floorTileAssetIds?: Record<string, string>
   wallSurfaceAssetIds?: Record<string, string>
@@ -75,6 +82,8 @@ type SerializedFloor = {
 export type DungeonFile = {
   version: number
   name: string
+  mapMode?: MapMode
+  outdoorTimeOfDay?: number
   sceneLighting: { intensity: number }
   postProcessing: {
     enabled: boolean
@@ -92,6 +101,8 @@ export type DungeonFile = {
 
 export type SerializableState = {
   name?: string
+  mapMode?: MapMode
+  outdoorTimeOfDay?: number
   sceneLighting: { intensity: number }
   postProcessing: {
     enabled: boolean
@@ -106,6 +117,7 @@ export type SerializableState = {
   activeLayerId: string
   rooms: Record<string, Room>
   paintedCells: PaintedCells
+  blockedCells: BlockedCells
   exploredCells: Record<string, true>
   floorTileAssetIds: Record<string, string>
   wallSurfaceAssetIds: Record<string, string>
@@ -131,6 +143,7 @@ function serializeFloorData(
     activeLayerId: string
     rooms: Record<string, Room>
     paintedCells: PaintedCells
+    blockedCells: BlockedCells
     exploredCells: Record<string, true>
     floorTileAssetIds: Record<string, string>
     wallSurfaceAssetIds: Record<string, string>
@@ -149,6 +162,9 @@ function serializeFloorData(
     rooms: Object.values(snapshot.rooms),
     cells: Object.values(snapshot.paintedCells).map((r) => ({
       x: r.cell[0], z: r.cell[1], layerId: r.layerId, roomId: r.roomId,
+    })),
+    blockedCells: Object.values(snapshot.blockedCells).map((r) => ({
+      x: r.cell[0], z: r.cell[1], layerId: r.layerId,
     })),
     exploredCells: Object.keys(snapshot.exploredCells),
     floorTileAssetIds: { ...snapshot.floorTileAssetIds },
@@ -184,6 +200,7 @@ export function serializeDungeon(state: SerializableState): string {
       activeLayerId: state.activeLayerId,
       rooms: state.rooms,
       paintedCells: state.paintedCells,
+      blockedCells: state.blockedCells,
       exploredCells: state.exploredCells,
       floorTileAssetIds: state.floorTileAssetIds,
       wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -199,6 +216,8 @@ export function serializeDungeon(state: SerializableState): string {
   const file: DungeonFile = {
     version: CURRENT_VERSION,
     name: state.name ?? 'My Dungeon',
+    mapMode: state.mapMode ?? 'indoor',
+    outdoorTimeOfDay: typeof state.outdoorTimeOfDay === 'number' ? state.outdoorTimeOfDay : 0.5,
     sceneLighting: { intensity: state.sceneLighting.intensity },
     postProcessing: { ...state.postProcessing },
     activeFloorId,
@@ -337,6 +356,22 @@ export function deserializeDungeon(json: string): SerializableState | null {
     }
   }
 
+  if (version < 10) {
+    const r = raw as Record<string, unknown>
+    raw = {
+      ...r,
+      mapMode: typeof r.mapMode === 'string' ? r.mapMode : 'indoor',
+      outdoorTimeOfDay: typeof r.outdoorTimeOfDay === 'number' ? r.outdoorTimeOfDay : 0.5,
+      floors: Array.isArray(r.floors)
+        ? (r.floors as unknown[]).map((floor) =>
+            isObject(floor) && !Array.isArray(floor.blockedCells)
+              ? { ...floor, blockedCells: [] }
+              : floor,
+          )
+        : r.floors,
+    }
+  }
+
   return parseFile(raw as Record<string, unknown>)
 }
 
@@ -348,6 +383,7 @@ function parseFloorData(raw: Record<string, unknown>): {
   activeLayerId: string
   rooms: Record<string, Room>
   paintedCells: PaintedCells
+  blockedCells: BlockedCells
   exploredCells: Record<string, true>
   floorTileAssetIds: Record<string, string>
   wallSurfaceAssetIds: Record<string, string>
@@ -406,6 +442,17 @@ function parseFloorData(raw: Record<string, unknown>): {
     const layerId = typeof c.layerId === 'string' && layers[c.layerId] ? c.layerId : 'default'
     const roomId = typeof c.roomId === 'string' && rooms[c.roomId] ? c.roomId : null
     paintedCells[getCellKey(cell)] = { cell, layerId, roomId }
+  }
+  const blockedCells: BlockedCells = {}
+  const blockedCellsArr = Array.isArray(raw.blockedCells) ? (raw.blockedCells as unknown[]) : []
+  for (const c of blockedCellsArr) {
+    if (!isObject(c)) continue
+    const cell: GridCell = [
+      typeof c.x === 'number' ? c.x : 0,
+      typeof c.z === 'number' ? c.z : 0,
+    ]
+    const layerId = typeof c.layerId === 'string' && layers[c.layerId] ? c.layerId : 'default'
+    blockedCells[getCellKey(cell)] = { cell, layerId, roomId: null }
   }
 
   const exploredCells = Object.fromEntries(
@@ -467,7 +514,7 @@ function parseFloorData(raw: Record<string, unknown>): {
 
   return {
     layers, layerOrder, activeLayerId, rooms,
-    paintedCells, exploredCells, floorTileAssetIds, wallSurfaceAssetIds,
+    paintedCells, blockedCells, exploredCells, floorTileAssetIds, wallSurfaceAssetIds,
     placedObjects, wallOpenings, occupancy,
     nextRoomNumber: typeof raw.nextRoomNumber === 'number' && raw.nextRoomNumber >= 1
       ? raw.nextRoomNumber : 1,
@@ -542,6 +589,11 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
 
     const parsedState: SerializableState = {
       name: typeof raw.name === 'string' ? raw.name : 'My Dungeon',
+      mapMode: raw.mapMode === 'outdoor' ? 'outdoor' : 'indoor',
+      outdoorTimeOfDay:
+        typeof raw.outdoorTimeOfDay === 'number'
+          ? Math.max(0, Math.min(1, raw.outdoorTimeOfDay))
+          : 0.5,
       sceneLighting: {
         intensity: typeof sceneLightingRaw.intensity === 'number' ? sceneLightingRaw.intensity : 1,
       },

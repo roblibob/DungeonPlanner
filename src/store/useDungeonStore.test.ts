@@ -51,6 +51,23 @@ describe('useDungeonStore history', () => {
     expect(Object.keys(state.paintedCells)).toHaveLength(2)
   })
 
+  it('creates an outdoor map with terrain blocker brush defaults', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    const state = useDungeonStore.getState()
+    expect(state.mapMode).toBe('outdoor')
+    expect(state.tool).toBe('room')
+    expect(state.roomEditMode).toBe('rooms')
+    expect(state.outdoorTimeOfDay).toBe(0.5)
+  })
+
+  it('paints and erases outdoor blocked cells', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    expect(useDungeonStore.getState().paintBlockedCells([[2, 2], [3, 2]])).toBe(2)
+    expect(Object.keys(useDungeonStore.getState().blockedCells)).toHaveLength(2)
+    expect(useDungeonStore.getState().eraseBlockedCells([[2, 2]])).toBe(1)
+    expect(useDungeonStore.getState().blockedCells['2:2']).toBeUndefined()
+  })
+
   it('places a prop into a snapped cell and selects it', () => {
     const placedId = useDungeonStore.getState().placeObject({
       type: 'prop',
@@ -234,6 +251,30 @@ describe('useDungeonStore history', () => {
     expect(state.occupancy['0:0:floor']).toBe(firstId)
     expect(state.occupancy['1:0:floor']).toBe(secondId)
     expect(state.placedObjects[firstId!]?.cell).toEqual([0, 0])
+  })
+
+  it('does not move a player into blocked outdoor terrain', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    const assetId = createTestGeneratedCharacter('Generated Ranger')
+
+    const placedId = useDungeonStore.getState().placeObject({
+      type: 'player',
+      assetId,
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'FLOOR', direction: null },
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+    })
+    useDungeonStore.getState().paintBlockedCells([[1, 0]])
+
+    const moved = useDungeonStore.getState().moveObject(placedId!, {
+      position: [3, 0, 1],
+      cell: [1, 0],
+      cellKey: '1:0:floor',
+    })
+
+    expect(moved).toBe(false)
   })
 
   it('creates generated character assets that appear in the registry', () => {

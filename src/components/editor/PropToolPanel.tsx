@@ -3,6 +3,7 @@ import { useDungeonStore } from '../../store/useDungeonStore'
 import { AssetCatalog } from './AssetCatalog'
 
 export function PropToolPanel() {
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const selectedAssetIds = useDungeonStore((state) => state.selectedAssetIds)
   const setSelectedAsset = useDungeonStore((state) => state.setSelectedAsset)
   const selection = useDungeonStore((state) => state.selection)
@@ -25,7 +26,11 @@ export function PropToolPanel() {
 
       <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-xs leading-6 text-stone-400">
         <p className="font-medium text-stone-300">Placement Tool</p>
-        <p className="mt-1">Click a room cell to place. Right-click to remove.</p>
+        <p className="mt-1">
+          {mapMode === 'outdoor'
+            ? 'Click terrain to place. Right-click to remove.'
+            : 'Click a room cell to place. Right-click to remove.'}
+        </p>
         <p>Hold <kbd>Alt</kbd> + click to inspect.</p>
       </section>
 

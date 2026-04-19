@@ -146,20 +146,70 @@ export default Scene
 /** Camera, controls, lighting, grid — shared across all floors. */
 function GlobalContent() {
   const lightIntensity = useDungeonStore((state) => state.sceneLighting.intensity)
+  const mapMode = useDungeonStore((state) => state.mapMode)
+  const outdoorTimeOfDay = useDungeonStore((state) => state.outdoorTimeOfDay)
   const tool = useDungeonStore((state) => state.tool)
   const floorViewMode = useDungeonStore((state) => state.floorViewMode)
   const effectiveFloorViewMode = getEffectiveFloorViewMode(floorViewMode, tool)
+  const outdoorBlend = outdoorTimeOfDay
+  const ambientColor = mapMode === 'outdoor'
+    ? mapOutdoorColor(outdoorBlend, [
+      [0, '#ffc89a'],
+      [0.5, '#e8f5ff'],
+      [1, '#5c74b3'],
+    ])
+    : new THREE.Color('#ffe4c7')
+  const keyColor = mapMode === 'outdoor'
+    ? mapOutdoorColor(outdoorBlend, [
+      [0, '#ffd7a6'],
+      [0.5, '#fff2cc'],
+      [1, '#9db4ff'],
+    ])
+    : new THREE.Color('#ffd29d')
+  const fillColor = mapMode === 'outdoor'
+    ? mapOutdoorColor(outdoorBlend, [
+      [0, '#ff9f6e'],
+      [0.5, '#9bd5ff'],
+      [1, '#3f5ca8'],
+    ])
+    : new THREE.Color('#89dceb')
+  const skyColor = mapMode === 'outdoor'
+    ? mapOutdoorColor(outdoorBlend, [
+      [0, '#ff9f6e'],
+      [0.5, '#76c8ff'],
+      [1, '#09152c'],
+    ])
+    : new THREE.Color('#120f0e')
+  const fogNear = mapMode === 'outdoor' ? 34 : 26
+  const fogFar = mapMode === 'outdoor' ? 92 : 74
+  const keyMultiplier = mapMode === 'outdoor'
+    ? mapOutdoorNumber(outdoorBlend, [
+      [0, 1.3],
+      [0.5, 2.2],
+      [1, 0.35],
+    ])
+    : 2
+  const fillMultiplier = mapMode === 'outdoor' ? 0.7 : 0.85
+  const sunPosition = useMemo(() => {
+    const angle = outdoorBlend * Math.PI
+    return [
+      Math.cos(angle) * 48,
+      Math.sin(angle) * 38 + 4,
+      -22,
+    ] as [number, number, number]
+  }, [outdoorBlend])
 
   return (
     <>
-      <color attach="background" args={['#120f0e']} />
-      <fog attach="fog" args={['#120f0e', 26, 74]} />
-      <ambientLight intensity={1.6 * lightIntensity} color="#ffe4c7" />
+      {mapMode === 'outdoor' && <OutdoorGround outdoorBlend={outdoorBlend} />}
+      <color attach="background" args={[skyColor]} />
+      <fog attach="fog" args={[skyColor, fogNear, fogFar]} />
+      <ambientLight intensity={1.6 * lightIntensity} color={ambientColor} />
       <directionalLight
         castShadow
-        intensity={2 * lightIntensity}
-        color="#ffd29d"
-        position={[9, 14, 7]}
+        intensity={keyMultiplier * lightIntensity}
+        color={keyColor}
+        position={mapMode === 'outdoor' ? sunPosition : [9, 14, 7]}
         shadow-mapSize={[2048, 2048]}
         shadow-camera-near={0.5}
         shadow-camera-far={80}
@@ -170,8 +220,8 @@ function GlobalContent() {
         shadow-bias={-0.001}
       />
       <directionalLight
-        intensity={0.85 * lightIntensity}
-        color="#89dceb"
+        intensity={fillMultiplier * lightIntensity}
+        color={fillColor}
         position={[-8, 7, -4]}
       />
 
@@ -183,6 +233,82 @@ function GlobalContent() {
       <FrameDriver />
     </>
   )
+}
+
+function OutdoorGround({ outdoorBlend }: { outdoorBlend: number }) {
+  const groundColor = useMemo(
+    () => new THREE.Color('#5f7f45').lerp(new THREE.Color('#2f3f2d'), outdoorBlend),
+    [outdoorBlend],
+  )
+
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+      <planeGeometry args={[260, 260]} />
+      <meshStandardMaterial color={groundColor} roughness={1} metalness={0} />
+    </mesh>
+  )
+}
+
+function mapOutdoorColor(time: number, keyframes: Array<[number, string]>) {
+  if (keyframes.length === 0) {
+    return new THREE.Color('#ffffff')
+  }
+
+  const clamped = Math.min(1, Math.max(0, time))
+  const first = keyframes[0]
+  const last = keyframes.at(-1) ?? first
+
+  if (clamped <= first[0]) {
+    return new THREE.Color(first[1])
+  }
+  if (clamped >= last[0]) {
+    return new THREE.Color(last[1])
+  }
+
+  for (let index = 1; index < keyframes.length; index += 1) {
+    const previous = keyframes[index - 1]
+    const current = keyframes[index]
+    if (clamped > current[0]) {
+      continue
+    }
+
+    const range = Math.max(1e-6, current[0] - previous[0])
+    const mix = (clamped - previous[0]) / range
+    return new THREE.Color(previous[1]).lerp(new THREE.Color(current[1]), mix)
+  }
+
+  return new THREE.Color(last[1])
+}
+
+function mapOutdoorNumber(time: number, keyframes: Array<[number, number]>) {
+  if (keyframes.length === 0) {
+    return 1
+  }
+
+  const clamped = Math.min(1, Math.max(0, time))
+  const first = keyframes[0]
+  const last = keyframes.at(-1) ?? first
+
+  if (clamped <= first[0]) {
+    return first[1]
+  }
+  if (clamped >= last[0]) {
+    return last[1]
+  }
+
+  for (let index = 1; index < keyframes.length; index += 1) {
+    const previous = keyframes[index - 1]
+    const current = keyframes[index]
+    if (clamped > current[0]) {
+      continue
+    }
+
+    const range = Math.max(1e-6, current[0] - previous[0])
+    const mix = (clamped - previous[0]) / range
+    return previous[1] + (current[1] - previous[1]) * mix
+  }
+
+  return last[1]
 }
 
 type FloorRenderEntry = {
@@ -327,6 +453,8 @@ function SceneOverviewContent() {
 function FloorContent({ startY = 0 }: { startY?: number }) {
   const placedObjects = useDungeonStore((state) => state.placedObjects)
   const paintedCells = useDungeonStore((state) => state.paintedCells)
+  const blockedCells = useDungeonStore((state) => state.blockedCells)
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const occupancy = useDungeonStore((state) => state.occupancy)
   const layers = useDungeonStore((state) => state.layers)
   const tool = useDungeonStore((state) => state.tool)
@@ -448,7 +576,14 @@ function FloorContent({ startY = 0 }: { startY?: number }) {
       const occupantId = occupancy[anchorKey]
 
       setDragState((current) => current
-        ? updatePlayDragState(current, point, Boolean(paintedCells[targetKey]), occupantId)
+        ? updatePlayDragState(
+            current,
+            point,
+            mapMode === 'outdoor'
+              ? !blockedCells[targetKey]
+              : Boolean(paintedCells[targetKey]),
+            occupantId,
+          )
         : current)
       invalidate()
     }
@@ -489,7 +624,7 @@ function FloorContent({ startY = 0 }: { startY?: number }) {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [camera, dragState, gl, invalidate, moveObject, occupancy, paintedCells, stopDrag])
+  }, [blockedCells, camera, dragState, gl, invalidate, mapMode, moveObject, occupancy, paintedCells, stopDrag])
 
   useEffect(() => {
     if (tool === 'play') {
@@ -501,13 +636,14 @@ function FloorContent({ startY = 0 }: { startY?: number }) {
 
   return (
     <group ref={groupRef} position={[0, startY, 0]}>
-      {(postProcessingEnabled || showLensFocusDebugPoint || (visibility.active && visibility.mask !== null)) && (
-        <WebGPUPostProcessing lineOfSightActive={visibility.active && visibility.mask !== null} />
+      {(postProcessingEnabled || showLensFocusDebugPoint) && (
+        <WebGPUPostProcessing />
       )}
       <DungeonRoom visibility={visibility} />
       <RoomResizeOverlay />
       {visibility.active && visibility.mask && (
         <>
+          <PlayVisibilityMask mask={visibility.mask} mode="occlusion" />
           {showLosDebugMask && <PlayVisibilityMask mask={visibility.mask} mode="debug" />}
           {showLosDebugRays && <PlayVisibilityDebugRays mask={visibility.mask} />}
         </>

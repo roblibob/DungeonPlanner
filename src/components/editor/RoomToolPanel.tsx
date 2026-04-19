@@ -13,6 +13,7 @@ const ROOM_EDIT_MODES: Array<{ id: RoomEditMode; label: string }> = [
 ]
 
 export function RoomToolPanel() {
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const roomEditMode = useDungeonStore((state) => state.roomEditMode)
   const surfaceBrushAssetIds = useDungeonStore((state) => state.surfaceBrushAssetIds)
   const setRoomEditMode = useDungeonStore((state) => state.setRoomEditMode)
@@ -29,10 +30,13 @@ export function RoomToolPanel() {
     <div className="space-y-5">
       <section>
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70">
-          Surface Mode
+          {mapMode === 'outdoor' ? 'Terrain Mode' : 'Surface Mode'}
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className={`grid gap-2 ${mapMode === 'outdoor' ? 'grid-cols-1' : 'grid-cols-3'}`}>
           {ROOM_EDIT_MODES.map((mode) => {
+            if (mapMode === 'outdoor' && mode.id !== 'rooms') {
+              return null
+            }
             const active = roomEditMode === mode.id
             return (
               <button
@@ -54,8 +58,12 @@ export function RoomToolPanel() {
 
       {roomEditMode === 'rooms' ? (
         <section className="rounded-2xl border border-stone-800 bg-stone-950/50 p-4 text-sm leading-6 text-stone-400">
-          <p className="font-medium text-stone-300">Room Tool</p>
-          <p className="mt-1 text-xs">Left-drag to paint rooms. Right-drag to erase.</p>
+          <p className="font-medium text-stone-300">{mapMode === 'outdoor' ? 'Terrain Blocker Brush' : 'Room Tool'}</p>
+          <p className="mt-1 text-xs">
+            {mapMode === 'outdoor'
+              ? 'Left-drag to paint blocked terrain. Right-drag to clear blocked terrain.'
+              : 'Left-drag to paint rooms. Right-drag to erase.'}
+          </p>
         </section>
       ) : (
         <>
@@ -96,7 +104,7 @@ export function RoomToolPanel() {
         </>
       )}
 
-      <RoomPanel />
+      {mapMode !== 'outdoor' && <RoomPanel />}
     </div>
   )
 }

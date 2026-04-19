@@ -32,6 +32,8 @@ function SelectionOutline({ source }: { source: THREE.Object3D }) {
       if (obj instanceof THREE.Mesh) {
         obj.material = mat
         obj.renderOrder = 999
+        obj.castShadow = false
+        obj.receiveShadow = false
       }
     })
     markIgnoreLosRaycast(clone)
@@ -73,6 +75,8 @@ function TintOverlay({
       if (obj instanceof THREE.Mesh) {
         obj.material = mat
         obj.renderOrder = 1
+        obj.castShadow = false
+        obj.receiveShadow = false
       }
     })
     markIgnoreLosRaycast(clone)
