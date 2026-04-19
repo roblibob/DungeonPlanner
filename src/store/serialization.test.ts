@@ -44,6 +44,14 @@ function baseState(): SerializableState {
     name: 'Test Dungeon',
     mapMode: 'indoor',
     outdoorTimeOfDay: 0.5,
+    outdoorTerrainProfiles: {
+      mixed: { density: 'medium', overpaintRegenerate: false },
+      rocks: { density: 'medium', overpaintRegenerate: false },
+      'dead-forest': { density: 'medium', overpaintRegenerate: false },
+    },
+    outdoorTerrainDensity: 'medium',
+    outdoorTerrainType: 'mixed',
+    outdoorOverpaintRegenerate: false,
     sceneLighting: { intensity: 1.5 },
     postProcessing: { ...DEFAULT_POST_PROCESSING_SETTINGS },
     ...emptyFloorSnapshot(),
@@ -76,6 +84,25 @@ describe('serializeDungeon / deserializeDungeon roundtrip', () => {
     expect(result).not.toBeNull()
     expect(result!.mapMode).toBe('outdoor')
     expect(result!.outdoorTimeOfDay).toBe(0.8)
+  })
+
+  it('preserves outdoor terrain brush settings', () => {
+    const state = baseState()
+    state.mapMode = 'outdoor'
+    state.outdoorTerrainDensity = 'dense'
+    state.outdoorTerrainType = 'dead-forest'
+    state.outdoorOverpaintRegenerate = true
+    state.outdoorTerrainProfiles = {
+      mixed: { density: 'dense', overpaintRegenerate: true },
+      rocks: { density: 'sparse', overpaintRegenerate: false },
+      'dead-forest': { density: 'dense', overpaintRegenerate: true },
+    }
+    const result = deserializeDungeon(serializeDungeon(state))
+    expect(result).not.toBeNull()
+    expect(result!.outdoorTerrainDensity).toBe('dense')
+    expect(result!.outdoorTerrainType).toBe('dead-forest')
+    expect(result!.outdoorOverpaintRegenerate).toBe(true)
+    expect(result!.outdoorTerrainProfiles?.rocks?.density).toBe('sparse')
   })
 
   it('preserves painted cells', () => {

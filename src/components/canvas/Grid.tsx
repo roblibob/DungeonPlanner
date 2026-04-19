@@ -71,6 +71,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const wallOpenings = useDungeonStore((state) => state.wallOpenings)
   const rooms = useDungeonStore((state) => state.rooms)
   const roomEditMode = useDungeonStore((state) => state.roomEditMode)
+  const outdoorOverpaintRegenerate = useDungeonStore((state) => state.outdoorOverpaintRegenerate)
   const surfaceBrushAssetIds = useDungeonStore((state) => state.surfaceBrushAssetIds)
   const floorTileAssetIds = useDungeonStore((state) => state.floorTileAssetIds)
   const wallSurfaceAssetIds = useDungeonStore((state) => state.wallSurfaceAssetIds)
@@ -274,6 +275,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       getRectangleCells(startCell, currentCell),
       mapMode === 'outdoor' ? blockedCellsRef.current : paintedCellsRef.current,
       mode,
+      mapMode === 'outdoor' && mode === 'paint' && outdoorOverpaintRegenerate,
     )
 
     if (cells.length > 0) {
@@ -944,10 +946,11 @@ function filterStrokeCells(
   cells: GridCell[],
   paintedCells: Record<string, PaintedCellRecord>,
   mode: 'paint' | 'erase',
+  includeExistingPainted = false,
 ) {
   return cells.filter((cell) =>
     mode === 'paint'
-      ? !paintedCells[getCellKey(cell)]
+      ? includeExistingPainted || !paintedCells[getCellKey(cell)]
       : Boolean(paintedCells[getCellKey(cell)]),
   )
 }

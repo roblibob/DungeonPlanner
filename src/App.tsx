@@ -256,7 +256,7 @@ function App() {
         : tool === 'room'
           ? roomEditMode === 'rooms'
             ? mapMode === 'outdoor'
-              ? 'Left-drag to paint blocked terrain · right-drag to clear blocked terrain'
+              ? 'Left-drag to paint terrain surroundings · right-drag to erase surrounding areas'
               : 'Click room to select · drag room edges to resize · rectangular rooms also show corner handles · left-drag empty space to build · right-drag to erase'
             : roomEditMode === 'floor-variants'
               ? 'Pick a floor variant · click a painted tile to apply it · right-click to clear the tile override'

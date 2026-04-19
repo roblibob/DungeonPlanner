@@ -51,21 +51,135 @@ describe('useDungeonStore history', () => {
     expect(Object.keys(state.paintedCells)).toHaveLength(2)
   })
 
-  it('creates an outdoor map with terrain blocker brush defaults', () => {
+  it('creates an outdoor map with surrounding paint defaults', () => {
     useDungeonStore.getState().newDungeon('outdoor')
     const state = useDungeonStore.getState()
     expect(state.mapMode).toBe('outdoor')
     expect(state.tool).toBe('room')
     expect(state.roomEditMode).toBe('rooms')
     expect(state.outdoorTimeOfDay).toBe(0.5)
+    expect(state.outdoorTerrainType).toBe('mixed')
+    expect(state.outdoorTerrainDensity).toBe('medium')
+    expect(state.outdoorOverpaintRegenerate).toBe(false)
   })
 
-  it('paints and erases outdoor blocked cells', () => {
+  it('paints and erases outdoor surrounding cells with generated forest props', () => {
     useDungeonStore.getState().newDungeon('outdoor')
     expect(useDungeonStore.getState().paintBlockedCells([[2, 2], [3, 2]])).toBe(2)
-    expect(Object.keys(useDungeonStore.getState().blockedCells)).toHaveLength(2)
+    let state = useDungeonStore.getState()
+    expect(Object.keys(state.blockedCells)).toHaveLength(2)
+    const generated = Object.values(state.placedObjects).filter(
+      (object) => object.props.generatedBy === 'surrounding-forest',
+    )
+    expect(generated.length).toBeGreaterThanOrEqual(2)
+
     expect(useDungeonStore.getState().eraseBlockedCells([[2, 2]])).toBe(1)
-    expect(useDungeonStore.getState().blockedCells['2:2']).toBeUndefined()
+    state = useDungeonStore.getState()
+    expect(state.blockedCells['2:2']).toBeUndefined()
+    const erasedCellObjects = Object.values(state.placedObjects).filter(
+      (object) => object.supportCellKey === '2:2' && object.props.generatedBy === 'surrounding-forest',
+    )
+    expect(erasedCellObjects).toHaveLength(0)
+  })
+
+  it('supports rock-only terrain preset for surrounding paint', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    useDungeonStore.getState().setOutdoorTerrainType('rocks')
+    useDungeonStore.getState().paintBlockedCells([[4, 4]])
+
+    const generated = Object.values(useDungeonStore.getState().placedObjects).filter(
+      (object) =>
+        object.supportCellKey === '4:4' &&
+        object.props.generatedBy === 'surrounding-forest',
+    )
+
+    expect(generated.length).toBeGreaterThan(0)
+    generated.forEach((object) => {
+      expect(object.assetId).toMatch(/^kaykit\.forest_rock_/)
+    })
+  })
+
+  it('supports dead-forest terrain preset for surrounding paint', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    useDungeonStore.getState().setOutdoorTerrainType('dead-forest')
+    useDungeonStore.getState().paintBlockedCells([[5, 5]])
+
+    const generated = Object.values(useDungeonStore.getState().placedObjects).filter(
+      (object) =>
+        object.supportCellKey === '5:5' &&
+        object.props.generatedBy === 'surrounding-forest',
+    )
+
+    expect(generated.length).toBeGreaterThan(0)
+    generated.forEach((object) => {
+      expect(object.assetId).toMatch(/^kaykit\.forest_(tree_bare_|rock_|grass_)/)
+    })
+  })
+
+  it('keeps terrain settings per terrain type', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    useDungeonStore.getState().setOutdoorTerrainDensity('dense')
+    useDungeonStore.getState().setOutdoorOverpaintRegenerate(true)
+
+    useDungeonStore.getState().setOutdoorTerrainType('rocks')
+    expect(useDungeonStore.getState().outdoorTerrainDensity).toBe('medium')
+    expect(useDungeonStore.getState().outdoorOverpaintRegenerate).toBe(false)
+
+    useDungeonStore.getState().setOutdoorTerrainDensity('sparse')
+    useDungeonStore.getState().setOutdoorOverpaintRegenerate(true)
+    useDungeonStore.getState().setOutdoorTerrainType('mixed')
+
+    expect(useDungeonStore.getState().outdoorTerrainDensity).toBe('dense')
+    expect(useDungeonStore.getState().outdoorOverpaintRegenerate).toBe(true)
+  })
+
+  it('uses density to control surrounding prop count', () => {
+    const cells = Array.from({ length: 40 }, (_, index) => [index, 8] as [number, number])
+
+    useDungeonStore.getState().newDungeon('outdoor')
+    useDungeonStore.getState().setOutdoorTerrainDensity('sparse')
+    useDungeonStore.getState().paintBlockedCells(cells)
+    const sparseCount = Object.values(useDungeonStore.getState().placedObjects).filter(
+      (object) => object.props.generatedBy === 'surrounding-forest',
+    ).length
+
+    useDungeonStore.getState().reset()
+    useDungeonStore.getState().newDungeon('outdoor')
+    useDungeonStore.getState().setOutdoorTerrainDensity('dense')
+    useDungeonStore.getState().paintBlockedCells(cells)
+    const denseCount = Object.values(useDungeonStore.getState().placedObjects).filter(
+      (object) => object.props.generatedBy === 'surrounding-forest',
+    ).length
+
+    expect(denseCount).toBeGreaterThan(sparseCount)
+  })
+
+  it('can regenerate already painted terrain when overpaint regenerate is enabled', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+    expect(useDungeonStore.getState().paintBlockedCells([[10, 10]])).toBe(1)
+    expect(useDungeonStore.getState().paintBlockedCells([[10, 10]])).toBe(0)
+
+    useDungeonStore.getState().setOutdoorOverpaintRegenerate(true)
+    expect(useDungeonStore.getState().paintBlockedCells([[10, 10]])).toBe(1)
+  })
+
+  it('does not remove manually placed props when erasing surroundings', () => {
+    useDungeonStore.getState().newDungeon('outdoor')
+
+    const manualId = useDungeonStore.getState().placeObject({
+      type: 'prop',
+      assetId: 'kaykit.forest_tree_1_a',
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'FREE', direction: null },
+      cell: [0, 0],
+      cellKey: '0:0:manual',
+    })
+
+    useDungeonStore.getState().paintBlockedCells([[0, 0]])
+    useDungeonStore.getState().eraseBlockedCells([[0, 0]])
+
+    expect(useDungeonStore.getState().placedObjects[manualId!]).toBeDefined()
   })
 
   it('places a prop into a snapped cell and selects it', () => {

@@ -48,6 +48,7 @@ import { kaykitForestRock3AAsset } from './ForestRock3A'
 import { kaykitForestBush1AAsset } from './ForestBush1A'
 import { kaykitForestBush2AAsset } from './ForestBush2A'
 import { kaykitForestBush3AAsset } from './ForestBush3A'
+import { kaykitAdditionalForestAssets } from './ForestAdditionalAssets'
 
 export const kaykitPropAssets = [
   kaykitBarrelSmallAsset,
@@ -100,4 +101,5 @@ export const kaykitPropAssets = [
   kaykitForestBush1AAsset,
   kaykitForestBush2AAsset,
   kaykitForestBush3AAsset,
+  ...kaykitAdditionalForestAssets,
 ]

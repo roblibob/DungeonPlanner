@@ -18,6 +18,9 @@ import type {
   FloorRecord,
   Layer,
   MapMode,
+  OutdoorTerrainDensity,
+  OutdoorTerrainProfile,
+  OutdoorTerrainType,
   OpeningRecord,
   PaintedCells,
   Room,
@@ -25,7 +28,7 @@ import type {
 import type { GridCell } from '../hooks/useSnapToGrid'
 import { getCellKey } from '../hooks/useSnapToGrid'
 
-const CURRENT_VERSION = 10
+const CURRENT_VERSION = 11
 
 // ── Serialized shapes (compact, no redundant keys) ────────────────────────────
 
@@ -84,6 +87,10 @@ export type DungeonFile = {
   name: string
   mapMode?: MapMode
   outdoorTimeOfDay?: number
+  outdoorTerrainProfiles?: Partial<Record<OutdoorTerrainType, Partial<OutdoorTerrainProfile>>>
+  outdoorTerrainDensity?: OutdoorTerrainDensity
+  outdoorTerrainType?: OutdoorTerrainType
+  outdoorOverpaintRegenerate?: boolean
   sceneLighting: { intensity: number }
   postProcessing: {
     enabled: boolean
@@ -103,6 +110,10 @@ export type SerializableState = {
   name?: string
   mapMode?: MapMode
   outdoorTimeOfDay?: number
+  outdoorTerrainProfiles?: Partial<Record<OutdoorTerrainType, Partial<OutdoorTerrainProfile>>>
+  outdoorTerrainDensity?: OutdoorTerrainDensity
+  outdoorTerrainType?: OutdoorTerrainType
+  outdoorOverpaintRegenerate?: boolean
   sceneLighting: { intensity: number }
   postProcessing: {
     enabled: boolean
@@ -218,6 +229,10 @@ export function serializeDungeon(state: SerializableState): string {
     name: state.name ?? 'My Dungeon',
     mapMode: state.mapMode ?? 'indoor',
     outdoorTimeOfDay: typeof state.outdoorTimeOfDay === 'number' ? state.outdoorTimeOfDay : 0.5,
+    outdoorTerrainProfiles: state.outdoorTerrainProfiles,
+    outdoorTerrainDensity: state.outdoorTerrainDensity ?? 'medium',
+    outdoorTerrainType: state.outdoorTerrainType ?? 'mixed',
+    outdoorOverpaintRegenerate: state.outdoorOverpaintRegenerate ?? false,
     sceneLighting: { intensity: state.sceneLighting.intensity },
     postProcessing: { ...state.postProcessing },
     activeFloorId,
@@ -369,6 +384,23 @@ export function deserializeDungeon(json: string): SerializableState | null {
               : floor,
           )
         : r.floors,
+    }
+  }
+
+  if (version < 11) {
+    const r = raw as Record<string, unknown>
+    raw = {
+      ...r,
+      outdoorTerrainProfiles: isObject(r.outdoorTerrainProfiles)
+        ? r.outdoorTerrainProfiles
+        : {
+            mixed: {
+              density: typeof r.outdoorTerrainDensity === 'string' ? r.outdoorTerrainDensity : 'medium',
+              overpaintRegenerate: r.outdoorOverpaintRegenerate === true,
+            },
+            rocks: { density: 'medium', overpaintRegenerate: false },
+            'dead-forest': { density: 'medium', overpaintRegenerate: false },
+          },
     }
   }
 
@@ -594,6 +626,16 @@ function parseFile(raw: Record<string, unknown>): SerializableState | null {
         typeof raw.outdoorTimeOfDay === 'number'
           ? Math.max(0, Math.min(1, raw.outdoorTimeOfDay))
           : 0.5,
+      outdoorTerrainProfiles: parseOutdoorTerrainProfiles(raw.outdoorTerrainProfiles),
+      outdoorTerrainDensity:
+        raw.outdoorTerrainDensity === 'sparse' || raw.outdoorTerrainDensity === 'medium' || raw.outdoorTerrainDensity === 'dense'
+          ? raw.outdoorTerrainDensity
+          : 'medium',
+      outdoorTerrainType:
+        raw.outdoorTerrainType === 'rocks' || raw.outdoorTerrainType === 'mixed' || raw.outdoorTerrainType === 'dead-forest'
+          ? raw.outdoorTerrainType
+          : 'mixed',
+      outdoorOverpaintRegenerate: raw.outdoorOverpaintRegenerate === true,
       sceneLighting: {
         intensity: typeof sceneLightingRaw.intensity === 'number' ? sceneLightingRaw.intensity : 1,
       },
@@ -634,6 +676,37 @@ function parseGridCell(value: unknown): GridCell | null {
   const [x, z] = value
   if (typeof x !== 'number' || typeof z !== 'number') return null
   return [x, z]
+}
+
+function parseOutdoorTerrainProfiles(value: unknown): Partial<Record<OutdoorTerrainType, Partial<OutdoorTerrainProfile>>> {
+  if (!isObject(value)) {
+    return {
+      mixed: { density: 'medium', overpaintRegenerate: false },
+      rocks: { density: 'medium', overpaintRegenerate: false },
+      'dead-forest': { density: 'medium', overpaintRegenerate: false },
+    }
+  }
+
+  const parseProfile = (profileValue: unknown): Partial<OutdoorTerrainProfile> => {
+    if (!isObject(profileValue)) {
+      return {}
+    }
+
+    return {
+      density:
+        profileValue.density === 'sparse' || profileValue.density === 'medium' || profileValue.density === 'dense'
+          ? profileValue.density
+          : undefined,
+      overpaintRegenerate:
+        typeof profileValue.overpaintRegenerate === 'boolean' ? profileValue.overpaintRegenerate : undefined,
+    }
+  }
+
+  return {
+    mixed: parseProfile(value.mixed),
+    rocks: parseProfile(value.rocks),
+    'dead-forest': parseProfile(value['dead-forest']),
+  }
 }
 
 // Suppress "unused import" — kept for completeness in registry-aware migrations
