@@ -54,12 +54,16 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const surfacePointerRef = useRef(new THREE.Vector2())
   const paintedCells = useDungeonStore((state) => state.paintedCells)
   const blockedCells = useDungeonStore((state) => state.blockedCells)
+  const outdoorGroundTextureCells = useDungeonStore((state) => state.outdoorGroundTextureCells)
+  const outdoorBrushMode = useDungeonStore((state) => state.outdoorBrushMode)
   const mapMode = useDungeonStore((state) => state.mapMode)
   const placedObjects = useDungeonStore((state) => state.placedObjects)
   const paintCells = useDungeonStore((state) => state.paintCells)
   const eraseCells = useDungeonStore((state) => state.eraseCells)
   const paintBlockedCells = useDungeonStore((state) => state.paintBlockedCells)
   const eraseBlockedCells = useDungeonStore((state) => state.eraseBlockedCells)
+  const paintOutdoorGroundTextureCells = useDungeonStore((state) => state.paintOutdoorGroundTextureCells)
+  const eraseOutdoorGroundTextureCells = useDungeonStore((state) => state.eraseOutdoorGroundTextureCells)
   const setFloorTileAsset = useDungeonStore((state) => state.setFloorTileAsset)
   const setWallSurfaceAsset = useDungeonStore((state) => state.setWallSurfaceAsset)
   const placeObject = useDungeonStore((state) => state.placeObject)
@@ -117,8 +121,6 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const strokeCurrentRef = useRef<GridCell | null>(null)
   const openPassageBrushActiveRef = useRef(false)
   const openPassageBrushWallKeysRef = useRef<string[]>([])
-  const paintedCellsRef = useRef(paintedCells)
-  const blockedCellsRef = useRef(blockedCells)
   const placementOrientationKey = `${selectedPropAssetId ?? ''}:${selectedCharacterAssetId ?? ''}:${selectedOpeningAssetId ?? ''}:${wallConnectionMode}`
   const [placementOrientation, setPlacementOrientation] = useState({
     key: placementOrientationKey,
@@ -133,13 +135,6 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     placementOrientation.key === placementOrientationKey
       ? placementOrientation.wallFlipped
       : false
-
-  useEffect(() => {
-    paintedCellsRef.current = paintedCells
-  }, [paintedCells])
-  useEffect(() => {
-    blockedCellsRef.current = blockedCells
-  }, [blockedCells])
 
   const resolvePlacementSurfaceHit = useEffectEvent((pointerEvent: PointerEvent) => {
     const rect = gl.domElement.getBoundingClientRect()
@@ -161,7 +156,24 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     )
   })
 
-  const roomBrushCells = mapMode === 'outdoor' ? blockedCells : paintedCells
+  const roomBrushCells = useMemo<Record<string, PaintedCellRecord>>(() => {
+    if (mapMode !== 'outdoor') {
+      return paintedCells
+    }
+    if (outdoorBrushMode === 'ground-texture') {
+      return Object.fromEntries(
+        Object.entries(outdoorGroundTextureCells).map(([cellKey, record]) => [
+          cellKey,
+          {
+            cell: record.cell,
+            layerId: record.layerId,
+            roomId: null,
+          },
+        ]),
+      )
+    }
+    return blockedCells
+  }, [blockedCells, mapMode, outdoorBrushMode, outdoorGroundTextureCells, paintedCells])
 
   // R key: rotates floor-connected assets; flips wall-connected openings 180°
   useEffect(() => {
@@ -273,15 +285,21 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
 
     const cells = filterStrokeCells(
       getRectangleCells(startCell, currentCell),
-      mapMode === 'outdoor' ? blockedCellsRef.current : paintedCellsRef.current,
+      roomBrushCells,
       mode,
-      mapMode === 'outdoor' && mode === 'paint' && outdoorOverpaintRegenerate,
+      mapMode === 'outdoor' &&
+        mode === 'paint' &&
+        (outdoorBrushMode === 'ground-texture' || outdoorOverpaintRegenerate),
     )
 
     if (cells.length > 0) {
       if (mode === 'paint') {
         if (mapMode === 'outdoor') {
-          paintBlockedCells(cells)
+          if (outdoorBrushMode === 'ground-texture') {
+            paintOutdoorGroundTextureCells(cells)
+          } else {
+            paintBlockedCells(cells)
+          }
         } else {
           paintCells(cells)
         }
@@ -290,7 +308,11 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         triggerBuild(cells, startCell)
       } else {
         if (mapMode === 'outdoor') {
-          eraseBlockedCells(cells)
+          if (outdoorBrushMode === 'ground-texture') {
+            eraseOutdoorGroundTextureCells(cells)
+          } else {
+            eraseBlockedCells(cells)
+          }
         } else {
           eraseCells(cells)
         }

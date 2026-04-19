@@ -31,6 +31,7 @@ function createSnapshot() {
     },
     paintedCells: {},
     blockedCells: {},
+    outdoorGroundTextureCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},

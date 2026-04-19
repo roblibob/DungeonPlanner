@@ -22,6 +22,7 @@ import { RoomResizeOverlay } from './RoomResizeOverlay'
 import { getEffectiveFloorViewMode } from './floorViewMode'
 import type { DungeonRoomData } from './DungeonRoom'
 import { isDownStairAssetId } from '../../store/stairAssets'
+import { OutdoorGround } from './OutdoorGround'
 
 const SCENE_OVERVIEW_FLOOR_HEIGHT_UNIT = 3
 const PLAYER_ANIMATION_MS = {
@@ -232,20 +233,6 @@ function GlobalContent() {
       <FpsMeterNode />
       <FrameDriver />
     </>
-  )
-}
-
-function OutdoorGround({ outdoorBlend }: { outdoorBlend: number }) {
-  const groundColor = useMemo(
-    () => new THREE.Color('#5f7f45').lerp(new THREE.Color('#2f3f2d'), outdoorBlend),
-    [outdoorBlend],
-  )
-
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-      <planeGeometry args={[260, 260]} />
-      <meshStandardMaterial color={groundColor} roughness={1} metalness={0} />
-    </mesh>
   )
 }
 

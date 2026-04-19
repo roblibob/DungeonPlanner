@@ -1,6 +1,8 @@
 import { getContentPackAssetById, getContentPackAssetsByCategory } from '../../content-packs/registry'
 import {
   useDungeonStore,
+  type OutdoorBrushMode,
+  type OutdoorGroundTextureType,
   type OutdoorTerrainDensity,
   type OutdoorTerrainType,
   type RoomEditMode,
@@ -29,6 +31,18 @@ const TERRAIN_DENSITIES: Array<{ id: OutdoorTerrainDensity; label: string }> = [
   { id: 'dense', label: 'Dense' },
 ]
 
+const OUTDOOR_BRUSH_MODES: Array<{ id: OutdoorBrushMode; label: string }> = [
+  { id: 'surroundings', label: 'Surroundings' },
+  { id: 'ground-texture', label: 'Ground Texture' },
+]
+
+const OUTDOOR_GROUND_TEXTURES: Array<{ id: OutdoorGroundTextureType; label: string }> = [
+  { id: 'short-grass', label: 'Short Grass' },
+  { id: 'dry-dirt', label: 'Dry Dirt' },
+  { id: 'rough-stone', label: 'Rough Stone' },
+  { id: 'wet-dirt', label: 'Wet Dirt' },
+]
+
 export function RoomToolPanel() {
   const mapMode = useDungeonStore((state) => state.mapMode)
   const roomEditMode = useDungeonStore((state) => state.roomEditMode)
@@ -36,11 +50,15 @@ export function RoomToolPanel() {
   const outdoorTerrainDensity = useDungeonStore((state) => state.outdoorTerrainDensity)
   const outdoorTerrainType = useDungeonStore((state) => state.outdoorTerrainType)
   const outdoorOverpaintRegenerate = useDungeonStore((state) => state.outdoorOverpaintRegenerate)
+  const outdoorBrushMode = useDungeonStore((state) => state.outdoorBrushMode)
+  const outdoorGroundTextureBrush = useDungeonStore((state) => state.outdoorGroundTextureBrush)
   const setRoomEditMode = useDungeonStore((state) => state.setRoomEditMode)
   const setSurfaceBrushAsset = useDungeonStore((state) => state.setSurfaceBrushAsset)
   const setOutdoorTerrainDensity = useDungeonStore((state) => state.setOutdoorTerrainDensity)
   const setOutdoorTerrainType = useDungeonStore((state) => state.setOutdoorTerrainType)
   const setOutdoorOverpaintRegenerate = useDungeonStore((state) => state.setOutdoorOverpaintRegenerate)
+  const setOutdoorBrushMode = useDungeonStore((state) => state.setOutdoorBrushMode)
+  const setOutdoorGroundTextureBrush = useDungeonStore((state) => state.setOutdoorGroundTextureBrush)
 
   const selectedFloorAsset = surfaceBrushAssetIds.floor
     ? getContentPackAssetById(surfaceBrushAssetIds.floor)
@@ -84,11 +102,60 @@ export function RoomToolPanel() {
           <p className="font-medium text-stone-300">{mapMode === 'outdoor' ? 'Surrounding Paint Brush' : 'Room Tool'}</p>
           <p className="mt-1 text-xs">
             {mapMode === 'outdoor'
-              ? 'Left-drag to paint terrain surroundings. Right-drag to erase. Painted areas auto-place terrain props and remain inaccessible.'
+              ? outdoorBrushMode === 'ground-texture'
+                ? 'Left-drag to paint ground textures. Right-drag to erase texture paint.'
+                : 'Left-drag to paint terrain surroundings. Right-drag to erase. Painted areas auto-place terrain props and remain inaccessible.'
               : 'Left-drag to paint rooms. Right-drag to erase.'}
           </p>
           {mapMode === 'outdoor' && (
             <div className="mt-4 space-y-3 text-xs">
+              <div>
+                <p className="mb-1 uppercase tracking-[0.2em] text-stone-500">Brush Mode</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {OUTDOOR_BRUSH_MODES.map((mode) => {
+                    const active = outdoorBrushMode === mode.id
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setOutdoorBrushMode(mode.id)}
+                        className={`rounded-xl border px-2 py-1.5 transition ${
+                          active
+                            ? 'border-teal-300/35 bg-teal-400/10 text-teal-200'
+                            : 'border-stone-800 bg-stone-950/60 text-stone-400 hover:border-stone-700 hover:text-stone-200'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              {outdoorBrushMode === 'ground-texture' ? (
+                <div>
+                  <p className="mb-1 uppercase tracking-[0.2em] text-stone-500">Ground Texture</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {OUTDOOR_GROUND_TEXTURES.map((texture) => {
+                      const active = outdoorGroundTextureBrush === texture.id
+                      return (
+                        <button
+                          key={texture.id}
+                          type="button"
+                          onClick={() => setOutdoorGroundTextureBrush(texture.id)}
+                          className={`rounded-xl border px-2 py-1.5 transition ${
+                            active
+                              ? 'border-teal-300/35 bg-teal-400/10 text-teal-200'
+                              : 'border-stone-800 bg-stone-950/60 text-stone-400 hover:border-stone-700 hover:text-stone-200'
+                          }`}
+                        >
+                          {texture.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <>
               <div>
                 <p className="mb-1 uppercase tracking-[0.2em] text-stone-500">Terrain Type</p>
                 <div className="grid grid-cols-1 gap-2">
@@ -145,6 +212,8 @@ export function RoomToolPanel() {
                 />
                 Regenerate on overpaint
               </label>
+                </>
+              )}
             </div>
           )}
         </section>

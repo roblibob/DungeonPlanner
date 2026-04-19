@@ -75,6 +75,8 @@ export type Room = {
 export type MapMode = 'indoor' | 'outdoor'
 export type OutdoorTerrainDensity = 'sparse' | 'medium' | 'dense'
 export type OutdoorTerrainType = 'mixed' | 'rocks' | 'dead-forest'
+export type OutdoorGroundTextureType = 'short-grass' | 'dry-dirt' | 'rough-stone' | 'wet-dirt'
+export type OutdoorBrushMode = 'surroundings' | 'ground-texture'
 export type OutdoorTerrainProfile = {
   density: OutdoorTerrainDensity
   overpaintRegenerate: boolean
@@ -93,6 +95,12 @@ export type BlockedCellRecord = {
   roomId: null
 }
 export type BlockedCells = Record<string, BlockedCellRecord>
+export type OutdoorGroundTextureCellRecord = {
+  cell: GridCell
+  layerId: string
+  textureType: OutdoorGroundTextureType
+}
+export type OutdoorGroundTextureCells = Record<string, OutdoorGroundTextureCellRecord>
 
 export type OpeningRecord = {
   id: string
@@ -128,6 +136,7 @@ export type DungeonObjectRecord = {
 type DungeonSnapshot = {
   paintedCells: PaintedCells
   blockedCells: BlockedCells
+  outdoorGroundTextureCells: OutdoorGroundTextureCells
   exploredCells: Record<string, true>
   floorTileAssetIds: Record<string, string>
   wallSurfaceAssetIds: Record<string, string>
@@ -183,6 +192,8 @@ type DungeonState = DungeonSnapshot & {
   outdoorTerrainType: OutdoorTerrainType
   outdoorOverpaintRegenerate: boolean
   outdoorTerrainProfiles: Record<OutdoorTerrainType, OutdoorTerrainProfile>
+  outdoorBrushMode: OutdoorBrushMode
+  outdoorGroundTextureBrush: OutdoorGroundTextureType
   cameraMode: CameraMode
   isPaintingStrokeActive: boolean
   isObjectDragActive: boolean
@@ -210,6 +221,8 @@ type DungeonState = DungeonSnapshot & {
   eraseCells: (cells: GridCell[]) => number
   paintBlockedCells: (cells: GridCell[]) => number
   eraseBlockedCells: (cells: GridCell[]) => number
+  paintOutdoorGroundTextureCells: (cells: GridCell[]) => number
+  eraseOutdoorGroundTextureCells: (cells: GridCell[]) => number
   placeObject: (input: PlaceObjectInput) => string | null
   moveObject: (id: string, input: MoveObjectInput) => boolean
   setObjectProps: (id: string, props: Record<string, unknown>) => boolean
@@ -241,6 +254,8 @@ type DungeonState = DungeonSnapshot & {
   setOutdoorTerrainDensity: (value: OutdoorTerrainDensity) => void
   setOutdoorTerrainType: (value: OutdoorTerrainType) => void
   setOutdoorOverpaintRegenerate: (value: boolean) => void
+  setOutdoorBrushMode: (value: OutdoorBrushMode) => void
+  setOutdoorGroundTextureBrush: (value: OutdoorGroundTextureType) => void
   setShowGrid: (show: boolean) => void
   setShowLosDebugMask: (show: boolean) => void
   setShowLosDebugRays: (show: boolean) => void
@@ -394,6 +409,16 @@ function cloneSnapshot(snapshot: DungeonSnapshot): DungeonSnapshot {
         { cell: [...record.cell] as GridCell, layerId: record.layerId, roomId: null },
       ]),
     ),
+    outdoorGroundTextureCells: Object.fromEntries(
+      Object.entries(snapshot.outdoorGroundTextureCells).map(([key, record]) => [
+        key,
+        {
+          cell: [...record.cell] as GridCell,
+          layerId: record.layerId,
+          textureType: record.textureType,
+        },
+      ]),
+    ),
     exploredCells: { ...snapshot.exploredCells },
     floorTileAssetIds: { ...snapshot.floorTileAssetIds },
     wallSurfaceAssetIds: { ...snapshot.wallSurfaceAssetIds },
@@ -457,6 +482,7 @@ function createEmptySnapshot(): DungeonSnapshot {
   return {
     paintedCells: {},
     blockedCells: {},
+    outdoorGroundTextureCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},
@@ -1018,6 +1044,8 @@ export const useDungeonStore = create<DungeonState>()(
   outdoorTerrainProfiles: normalizeOutdoorTerrainProfiles(undefined),
   outdoorTerrainDensity: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.density,
   outdoorOverpaintRegenerate: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.overpaintRegenerate,
+  outdoorBrushMode: 'surroundings' as OutdoorBrushMode,
+  outdoorGroundTextureBrush: 'short-grass' as OutdoorGroundTextureType,
   dungeonName: 'My Dungeon',
   cameraMode: 'orbit',
   isPaintingStrokeActive: false,
@@ -1205,6 +1233,72 @@ export const useDungeonStore = create<DungeonState>()(
       }
     })
 
+    return nextKeys.length
+  },
+  paintOutdoorGroundTextureCells: (cells) => {
+    const state = get()
+    if (state.mapMode !== 'outdoor') {
+      return 0
+    }
+    const nextCells = cells.filter((cell) => {
+      const cellKey = getCellKey(cell)
+      return state.outdoorGroundTextureCells[cellKey]?.textureType !== state.outdoorGroundTextureBrush
+    })
+    if (nextCells.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      if (current.mapMode !== 'outdoor') {
+        return current
+      }
+      const outdoorGroundTextureCells = { ...current.outdoorGroundTextureCells }
+      nextCells.forEach((cell) => {
+        const cellKey = getCellKey(cell)
+        outdoorGroundTextureCells[cellKey] = {
+          cell: [...cell] as GridCell,
+          layerId: current.activeLayerId,
+          textureType: current.outdoorGroundTextureBrush,
+        }
+      })
+      return {
+        ...current,
+        outdoorGroundTextureCells,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+    return nextCells.length
+  },
+  eraseOutdoorGroundTextureCells: (cells) => {
+    const state = get()
+    if (state.mapMode !== 'outdoor') {
+      return 0
+    }
+    const nextKeys = cells
+      .map((cell) => getCellKey(cell))
+      .filter((key) => Boolean(state.outdoorGroundTextureCells[key]))
+    if (nextKeys.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      if (current.mapMode !== 'outdoor') {
+        return current
+      }
+      const outdoorGroundTextureCells = { ...current.outdoorGroundTextureCells }
+      nextKeys.forEach((key) => {
+        delete outdoorGroundTextureCells[key]
+      })
+      return {
+        ...current,
+        outdoorGroundTextureCells,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
     return nextKeys.length
   },
   eraseCells: (cells) => {
@@ -1875,6 +1969,14 @@ export const useDungeonStore = create<DungeonState>()(
       }
     })
   },
+  setOutdoorBrushMode: (value) => {
+    set((state) => (state.outdoorBrushMode === value ? state : { ...state, outdoorBrushMode: value }))
+  },
+  setOutdoorGroundTextureBrush: (value) => {
+    set((state) => (state.outdoorGroundTextureBrush === value
+      ? state
+      : { ...state, outdoorGroundTextureBrush: value }))
+  },
   setShowGrid: (show) => {
     set((state) => ({ ...state, showGrid: show }))
   },
@@ -2054,6 +2156,8 @@ export const useDungeonStore = create<DungeonState>()(
         outdoorTerrainProfiles: normalizeOutdoorTerrainProfiles(undefined),
         outdoorTerrainDensity: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.density,
         outdoorOverpaintRegenerate: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.overpaintRegenerate,
+        outdoorBrushMode: 'surroundings',
+        outdoorGroundTextureBrush: 'short-grass',
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
         selectedRoomId: null,
@@ -2084,6 +2188,8 @@ export const useDungeonStore = create<DungeonState>()(
          outdoorTerrainProfiles: normalizeOutdoorTerrainProfiles(undefined),
          outdoorTerrainDensity: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.density,
          outdoorOverpaintRegenerate: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.overpaintRegenerate,
+         outdoorBrushMode: 'surroundings',
+         outdoorGroundTextureBrush: 'short-grass',
         // UI / tool state
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
@@ -2852,6 +2958,7 @@ export const useDungeonStore = create<DungeonState>()(
       rooms: state.rooms,
       paintedCells: state.paintedCells,
       blockedCells: state.blockedCells,
+      outdoorGroundTextureCells: state.outdoorGroundTextureCells,
       exploredCells: state.exploredCells,
       floorTileAssetIds: state.floorTileAssetIds,
       wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -2889,6 +2996,8 @@ export const useDungeonStore = create<DungeonState>()(
         outdoorTerrainProfiles: terrainProfiles,
         outdoorTerrainDensity: parsed.outdoorTerrainDensity ?? terrainProfile.density,
         outdoorOverpaintRegenerate: parsed.outdoorOverpaintRegenerate ?? terrainProfile.overpaintRegenerate,
+        outdoorBrushMode: parsed.mapMode === 'outdoor' ? 'surroundings' : current.outdoorBrushMode,
+        outdoorGroundTextureBrush: 'short-grass',
         dungeonName: parsed.name ?? current.dungeonName,
         generatedCharacters: normalizeGeneratedCharacters(current.generatedCharacters),
         characterSheet: { open: false, assetId: null },
@@ -2919,6 +3028,7 @@ export const useDungeonStore = create<DungeonState>()(
         dungeonName: state.dungeonName,
         paintedCells: state.paintedCells,
         blockedCells: state.blockedCells,
+        outdoorGroundTextureCells: state.outdoorGroundTextureCells,
         exploredCells: state.exploredCells,
         floorTileAssetIds: state.floorTileAssetIds,
         wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -2938,6 +3048,8 @@ export const useDungeonStore = create<DungeonState>()(
         outdoorTerrainDensity: state.outdoorTerrainDensity,
         outdoorTerrainType: state.outdoorTerrainType,
         outdoorOverpaintRegenerate: state.outdoorOverpaintRegenerate,
+        outdoorBrushMode: state.outdoorBrushMode,
+        outdoorGroundTextureBrush: state.outdoorGroundTextureBrush,
         selectedAssetIds: state.selectedAssetIds,
         generatedCharacters: state.generatedCharacters,
         floors: state.floors,

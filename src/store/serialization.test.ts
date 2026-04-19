@@ -17,6 +17,7 @@ function emptyFloorSnapshot() {
     rooms: {},
     paintedCells: {},
     blockedCells: {},
+    outdoorGroundTextureCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},
@@ -132,6 +133,24 @@ describe('serializeDungeon / deserializeDungeon roundtrip', () => {
     expect(result).not.toBeNull()
     const blocked = result!.blockedCells ?? result!.floors?.['floor-1']?.snapshot?.blockedCells
     expect(blocked?.['4:5']).toMatchObject({ cell: [4, 5], layerId: 'default' })
+  })
+
+  it('preserves outdoor ground texture paint cells', () => {
+    const state = baseState()
+    state.floors!['floor-1'].snapshot.outdoorGroundTextureCells['6:7'] = {
+      cell: [6, 7],
+      layerId: 'default',
+      textureType: 'rough-stone',
+    }
+
+    const result = deserializeDungeon(serializeDungeon(state))
+    expect(result).not.toBeNull()
+    const outdoorGroundTextureCells = result!.outdoorGroundTextureCells
+      ?? result!.floors?.['floor-1']?.snapshot?.outdoorGroundTextureCells
+    expect(outdoorGroundTextureCells?.['6:7']).toMatchObject({
+      cell: [6, 7],
+      textureType: 'rough-stone',
+    })
   })
 
   it('preserves explored cells', () => {
