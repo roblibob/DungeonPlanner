@@ -87,26 +87,21 @@ export function CameraPresetManager() {
       raycaster.setFromCamera(new THREE.Vector2(0, 0), camera) // (0,0) = screen center in NDC
       const intersects = raycaster.intersectObjects(scene.children, true)
       
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const orbitControls = controls as any
-      console.log('[CameraPreset] Switching to:', cameraPreset)
-      console.log('[CameraPreset] Current orbit target:', orbitControls?.target?.clone())
-      console.log('[CameraPreset] Raycast hits:', intersects.length)
-      
       // Find first mesh intersection (ignore helpers, lights, etc.)
       const hit = intersects.find(i => (i.object as THREE.Mesh).isMesh)
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const orbitControls = controls as any
       
       if (hit) {
         // Store the target position - we'll apply it every frame during animation
         targetOrbitPosRef.current = hit.point.clone()
-        console.log('[CameraPreset] Setting target orbit position to:', hit.point)
         
         // Also set it immediately
         if (orbitControls?.target) {
           orbitControls.target.copy(hit.point)
         }
       } else {
-        console.log('[CameraPreset] No mesh hit, keeping current orbit target')
         // Keep current orbit target
         if (orbitControls?.target) {
           targetOrbitPosRef.current = orbitControls.target.clone()
@@ -184,8 +179,6 @@ export function CameraPresetManager() {
     const newR     = THREE.MathUtils.lerp(cur.radius, dest.r,   LERP_FACTOR)
     const newPhi   = THREE.MathUtils.lerp(cur.phi,    dest.phi, LERP_FACTOR)
     const newTheta = lerpAngle(cur.theta, dest.theta, LERP_FACTOR)
-
-    console.log('[Animation] Orbit target:', orbitTarget.clone(), 'Camera pos:', activeCamera.position.clone())
 
     // Perspective: lerp FOV — Orthographic: lerp zoom
     let fovZoomArrived = true

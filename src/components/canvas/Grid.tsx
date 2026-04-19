@@ -1070,12 +1070,47 @@ function raycastObjectId(object: THREE.Object3D | null) {
   return null
 }
 
+import { calculatePropSnapPosition } from './propPlacement'
+
 function getPropPlacement(
   asset: ContentPackAsset,
   point: { x: number; y: number; z: number },
   paintedCells: Record<string, PaintedCellRecord>,
   surfaceHit: PlacementSurfaceHit | null,
 ): PropPlacement | null {
+  // Use new placement system if asset has new metadata
+  if (asset.metadata?.connectsToTypes || asset.metadata?.connectors || asset.metadata?.snapsTo) {
+    const snapResult = calculatePropSnapPosition(
+      asset,
+      point,
+      paintedCells,
+      surfaceHit ? {
+        position: surfaceHit.position,
+        objectId: surfaceHit.objectId,
+        cell: surfaceHit.cell,
+      } : null,
+    )
+    
+    if (!snapResult) {
+      return null
+    }
+    
+    // Convert to PropPlacement format
+    return {
+      connector: 'FLOOR', // Legacy field, not used with new system
+      direction: null,
+      cell: snapResult.cell,
+      anchorKey: snapResult.cellKey,
+      supportCellKey: snapResult.cellKey,
+      position: snapResult.position as [number, number, number],
+      rotation: snapResult.rotation as [number, number, number],
+      parentObjectId: snapResult.parentObjectId,
+      localPosition: snapResult.localPosition as [number, number, number] | null,
+      localRotation: snapResult.localRotation as [number, number, number] | null,
+    }
+  }
+  
+  // Legacy placement logic for backward compatibility
   const snapped = snapWorldPointToGrid(point)
   const connector = asset.metadata?.connectsTo ?? 'FLOOR'
 
