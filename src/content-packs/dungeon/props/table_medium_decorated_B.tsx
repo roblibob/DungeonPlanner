@@ -9,7 +9,12 @@ export const dungeonTableMediumDecoratedBAsset = createDungeonAsset({
   modelName: 'table_medium_decorated_B',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

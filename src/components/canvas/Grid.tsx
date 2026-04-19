@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { ThreeEvent } from '@react-three/fiber'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -17,7 +17,6 @@ import {
 } from '../../hooks/useSnapToGrid'
 import {
   useDungeonStore,
-  type DungeonTool,
   type DungeonObjectRecord,
   type PaintedCellRecord,
   type Room,
@@ -66,6 +65,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const wallOpenings = useDungeonStore((state) => state.wallOpenings)
   const rooms = useDungeonStore((state) => state.rooms)
   const roomEditMode = useDungeonStore((state) => state.roomEditMode)
+  const assetBrowser = useDungeonStore((state) => state.assetBrowser)
   const surfaceBrushAssetIds = useDungeonStore((state) => state.surfaceBrushAssetIds)
   const floorTileAssetIds = useDungeonStore((state) => state.floorTileAssetIds)
   const wallSurfaceAssetIds = useDungeonStore((state) => state.wallSurfaceAssetIds)
@@ -96,10 +96,26 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     : null
   const openingToolMode = getOpeningToolMode(
     wallConnectionMode,
-    selectedOpeningAsset?.metadata?.connectsTo,
+    selectedOpeningAsset?.metadata,
   )
+  const isUnifiedOpeningMode = tool === 'prop' && assetBrowser.category === 'openings'
+  const isUnifiedSurfaceMode = tool === 'prop' && assetBrowser.category === 'surfaces'
+  const isUnifiedFloorVariantMode = isUnifiedSurfaceMode && assetBrowser.subcategory !== 'walls'
+  const isUnifiedWallVariantMode = isUnifiedSurfaceMode && assetBrowser.subcategory === 'walls'
+  const isFloorOpeningMode =
+    (tool === 'opening' || isUnifiedOpeningMode) &&
+    wallConnectionMode === 'door' &&
+    openingToolMode === 'floor-asset'
+  const isWallOpeningMode =
+    (tool === 'opening' || isUnifiedOpeningMode) &&
+    wallConnectionMode === 'door' &&
+    openingToolMode === 'wall-connection'
   const [hoveredCell, setHoveredCell] = useState<SnappedGridPosition | null>(null)
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; z: number } | null>(null)
+  const [hoveredRay, setHoveredRay] = useState<{
+    origin: [number, number, number]
+    direction: [number, number, number]
+  } | null>(null)
   const [hoveredSurfaceHit, setHoveredSurfaceHit] = useState<PlacementSurfaceHit | null>(null)
   const [strokeMode, setStrokeMode] = useState<'paint' | 'erase' | null>(null)
   const [strokeStartCell, setStrokeStartCell] = useState<GridCell | null>(null)
@@ -131,7 +147,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     paintedCellsRef.current = paintedCells
   }, [paintedCells])
 
-  const resolvePlacementSurfaceHit = useEffectEvent((pointerEvent: PointerEvent) => {
+  const resolvePlacementSurfaceHit = useCallback((pointerEvent: PointerEvent) => {
     const rect = gl.domElement.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) {
       return null
@@ -148,13 +164,16 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       paintedCells,
       placedObjects,
     )
-  })
+  }, [camera, gl.domElement, paintedCells, placedObjects, scene.children])
 
   // R key: rotates floor-connected assets; flips wall-connected openings 180°
   useEffect(() => {
-    const isFloorOpening = tool === 'opening' && openingToolMode === 'floor-asset'
-    const isWallOpening = tool === 'opening' && wallConnectionMode === 'door' && !isFloorOpening
-    if (selection || (tool !== 'prop' && tool !== 'character' && !isFloorOpening && !isWallOpening)) return
+    const supportsRotation =
+      tool === 'character' ||
+      (tool === 'prop' && !isUnifiedSurfaceMode && !isUnifiedOpeningMode) ||
+      isFloorOpeningMode ||
+      isWallOpeningMode
+    if (selection || !supportsRotation) return
     function onKeyDown(e: KeyboardEvent) {
       const active = document.activeElement
       if (
@@ -170,7 +189,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
               ? current
               : { key: placementOrientationKey, floorRotationIndex: 0, wallFlipped: false }
 
-          return isWallOpening
+          return isWallOpeningMode
             ? { ...base, wallFlipped: !base.wallFlipped }
             : {
                 ...base,
@@ -181,7 +200,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [openingToolMode, placementOrientationKey, selection, tool, wallConnectionMode])
+  }, [isFloorOpeningMode, isUnifiedOpeningMode, isUnifiedSurfaceMode, isWallOpeningMode, placementOrientationKey, selection, tool])
 
   // Register non-passive handlers on the canvas so preventDefault() works for
   // context menu suppression and drag-selection prevention
@@ -311,6 +330,10 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     const snapped = snap(point)
     setHoveredCell(snapped)
     setHoveredPoint(point)
+    setHoveredRay({
+      origin: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+      direction: [event.ray.direction.x, event.ray.direction.y, event.ray.direction.z],
+    })
     setHoveredSurfaceHit(resolvePlacementSurfaceHit(event.nativeEvent))
 
     if (tool === 'room' && roomEditMode === 'rooms' && strokeModeRef.current) {
@@ -344,15 +367,29 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     const surfaceHit = resolvePlacementSurfaceHit(event.nativeEvent)
     setHoveredCell(snapped)
     setHoveredPoint(point)
+    setHoveredRay({
+      origin: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+      direction: [event.ray.direction.x, event.ray.direction.y, event.ray.direction.z],
+    })
     setHoveredSurfaceHit(surfaceHit)
 
-    if (tool === 'opening') {
-      const isFloorOpening = openingToolMode === 'floor-asset'
+    if (tool === 'opening' || isUnifiedOpeningMode) {
+      const activeOpeningAsset = selectedOpeningAsset
+      const activeOpeningAssetId = selectedOpeningAssetId
 
-        if (isFloorOpening) {
+        if (isFloorOpeningMode) {
           // Stairs and other floor-connected openings use prop-style placement
-          const rawPlacement = selectedOpeningAsset
-            ? getPropPlacement(selectedOpeningAsset, point, paintedCells, surfaceHit)
+          const rawPlacement = activeOpeningAsset
+            ? getPropPlacement(
+                activeOpeningAsset,
+                point,
+                paintedCells,
+                surfaceHit,
+                {
+                  origin: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+                  direction: [event.ray.direction.x, event.ray.direction.y, event.ray.direction.z],
+                },
+              )
             : null
           const propPlacement = applyFloorRotation(rawPlacement, floorRotationIndex * (Math.PI / 2))
 
@@ -368,9 +405,9 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         if (event.button !== 0 || !propPlacement) return
 
         const localTransform = getNestedLocalTransform(propPlacement, placedObjects)
-        placeObject({
-          type: 'prop',
-          assetId: selectedOpeningAssetId,
+          placeObject({
+            type: 'prop',
+            assetId: activeOpeningAssetId,
           position: propPlacement.position,
           rotation: propPlacement.rotation,
           props: { connector: propPlacement.connector, direction: propPlacement.direction },
@@ -386,7 +423,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
 
       const openingPlacement = getWallConnectionPlacement(
         wallConnectionMode,
-        selectedOpeningAsset,
+        activeOpeningAsset,
         point,
         paintedCells,
       )
@@ -416,7 +453,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       }
 
       placeOpening({
-        assetId: selectedOpeningAssetId,
+        assetId: activeOpeningAssetId,
         wallKey: `${getCellKey(openingPlacement.cell)}:${openingPlacement.direction}`,
         width: openingPlacement.width,
         flipped: wallFlipped,
@@ -424,11 +461,20 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       return
     }
 
-    if (tool === 'prop' || tool === 'character') {
+    if ((tool === 'prop' && !isUnifiedOpeningMode && !isUnifiedSurfaceMode) || tool === 'character') {
       const activeAsset = tool === 'character' ? selectedCharacterAsset : selectedPropAsset
       const activeAssetId = tool === 'character' ? selectedCharacterAssetId : selectedPropAssetId
       const rawPlacement = activeAsset
-        ? getPropPlacement(activeAsset, point, paintedCells, surfaceHit)
+        ? getPropPlacement(
+            activeAsset,
+            point,
+            paintedCells,
+            surfaceHit,
+            {
+              origin: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+              direction: [event.ray.direction.x, event.ray.direction.y, event.ray.direction.z],
+            },
+          )
         : null
       const propPlacement = applyFloorRotation(rawPlacement, floorRotationIndex * (Math.PI / 2))
 
@@ -474,8 +520,8 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
       return
     }
 
-    if (tool === 'room') {
-      if (roomEditMode === 'floor-variants') {
+    if (tool === 'room' || isUnifiedSurfaceMode) {
+      if (isUnifiedFloorVariantMode || (tool === 'room' && roomEditMode === 'floor-variants')) {
         const cellKey = getCellKey(snapped.cell)
         if (!paintedCells[cellKey]) {
           return
@@ -489,7 +535,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         return
       }
 
-      if (roomEditMode === 'wall-variants') {
+      if (isUnifiedWallVariantMode || (tool === 'room' && roomEditMode === 'wall-variants')) {
         const wallPlacement = hoveredPoint
           ? getOpeningPlacement(1, hoveredPoint, paintedCells)
           : getOpeningPlacement(1, point, paintedCells)
@@ -503,6 +549,10 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         } else if (event.button === 2) {
           setWallSurfaceAsset(wallKey, null)
         }
+        return
+      }
+
+      if (tool !== 'room') {
         return
       }
 
@@ -536,7 +586,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
   const isNavigationTool = isPassiveGridMode(tool, playMode)
   const renderGridOverlay = shouldRenderGridOverlay(showGrid, playMode)
   const wallConnectionPlacement = useMemo(
-    () => tool === 'opening' && hoveredPoint
+    () => (tool === 'opening' || isUnifiedOpeningMode) && hoveredPoint
       ? getWallConnectionPlacement(
           wallConnectionMode,
           selectedOpeningAsset,
@@ -544,7 +594,7 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
           paintedCells,
         )
       : null,
-    [hoveredPoint, paintedCells, selectedOpeningAsset, tool, wallConnectionMode],
+    [hoveredPoint, isUnifiedOpeningMode, paintedCells, selectedOpeningAsset, tool, wallConnectionMode],
   )
   const hoveredWallConnection = useMemo(
     () => wallConnectionPlacement
@@ -560,12 +610,12 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
     () => new Set(eligibleOpenPassageWalls.map((wall) => wall.wallKey)),
     [eligibleOpenPassageWalls],
   )
-  const isFloorVariantMode = tool === 'room' && roomEditMode === 'floor-variants'
-  const isWallVariantMode = tool === 'room' && roomEditMode === 'wall-variants'
+  const isFloorVariantMode = (tool === 'room' && roomEditMode === 'floor-variants') || isUnifiedFloorVariantMode
+  const isWallVariantMode = (tool === 'room' && roomEditMode === 'wall-variants') || isUnifiedWallVariantMode
   const isOpenWallBrushMode =
-    tool === 'opening' &&
+    (tool === 'opening' || isUnifiedOpeningMode) &&
     wallConnectionMode === 'open' &&
-    openingToolMode === 'wall-connection'
+    !isFloorOpeningMode
   const wallVariantPlacement = useMemo(
     () => (isWallVariantMode && hoveredPoint ? getOpeningPlacement(1, hoveredPoint, paintedCells) : null),
     [hoveredPoint, isWallVariantMode, paintedCells],
@@ -583,10 +633,11 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
         onPointerMove={isNavigationTool ? updateCursorPosOnly : updateHoveredCell}
         onPointerOut={() => {
           if (!isNavigationTool && !strokeModeRef.current && !openPassageBrushActiveRef.current) {
-            setHoveredCell(null)
-            setHoveredPoint(null)
-            setHoveredSurfaceHit(null)
-          }
+              setHoveredCell(null)
+              setHoveredPoint(null)
+              setHoveredRay(null)
+              setHoveredSurfaceHit(null)
+            }
         }}
         onPointerDown={isNavigationTool ? undefined : handlePointerDown}
         onContextMenu={isNavigationTool ? undefined : handleContextMenu}
@@ -627,50 +678,49 @@ export function Grid({ size = 120, playMode = false }: GridProps) {
           hoveredPoint={hoveredPoint}
           previewCells={previewCells}
           strokeMode={strokeMode}
-          tool={tool}
           propPlacement={(() => {
-            if (tool === 'prop' && selectedPropAsset && hoveredPoint)
+            if (tool === 'prop' && !isUnifiedOpeningMode && !isUnifiedSurfaceMode && selectedPropAsset && hoveredPoint)
               return applyFloorRotation(
-                getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells, hoveredSurfaceHit),
+                getPropPlacement(selectedPropAsset, hoveredPoint, paintedCells, hoveredSurfaceHit, hoveredRay),
                 floorRotationIndex * (Math.PI / 2),
               )
             if (tool === 'character' && selectedCharacterAsset && hoveredPoint)
               return applyFloorRotation(
-                getPropPlacement(selectedCharacterAsset, hoveredPoint, paintedCells, hoveredSurfaceHit),
+                getPropPlacement(selectedCharacterAsset, hoveredPoint, paintedCells, hoveredSurfaceHit, hoveredRay),
                 floorRotationIndex * (Math.PI / 2),
               )
             if (
-              tool === 'opening' &&
+              (tool === 'opening' || isUnifiedOpeningMode) &&
               selectedOpeningAsset &&
               hoveredPoint &&
-              openingToolMode === 'floor-asset'
+              isFloorOpeningMode
             )
               return applyFloorRotation(
-                getPropPlacement(selectedOpeningAsset, hoveredPoint, paintedCells, hoveredSurfaceHit),
+                getPropPlacement(selectedOpeningAsset, hoveredPoint, paintedCells, hoveredSurfaceHit, hoveredRay),
                 floorRotationIndex * (Math.PI / 2),
               )
             return null
           })()}
           propAssetId={
-            tool === 'prop'
+            tool === 'prop' && !isUnifiedSurfaceMode && !isUnifiedOpeningMode
               ? selectedPropAssetId
-              : tool === 'character'
+            : tool === 'character'
                 ? selectedCharacterAssetId
-              : tool === 'opening' &&
-                 openingToolMode === 'floor-asset'
+              : (tool === 'opening' || isUnifiedOpeningMode) &&
+                 isFloorOpeningMode
                 ? selectedOpeningAssetId
-               : null
+                : null
           }
           openingPlacement={
-            tool === 'opening' ? wallConnectionPlacement : null
+            (tool === 'opening' || isUnifiedOpeningMode) ? wallConnectionPlacement : null
           }
           floorVariantAssetId={isFloorVariantMode ? selectedFloorBrushAssetId : null}
           wallVariantAssetId={isWallVariantMode ? selectedWallBrushAssetId : null}
           wallVariantPlacement={isWallVariantMode ? wallVariantPlacement : null}
           openingAssetId={
-            tool === 'opening' &&
+            (tool === 'opening' || isUnifiedOpeningMode) &&
             wallConnectionMode === 'door' &&
-            openingToolMode === 'wall-connection'
+            !isFloorOpeningMode
               ? selectedOpeningAssetId
               : null
           }
@@ -697,7 +747,6 @@ function HoverPreview({
   hoveredPoint,
   previewCells,
   strokeMode,
-  tool,
   propPlacement,
   propAssetId,
   openingPlacement,
@@ -722,7 +771,6 @@ function HoverPreview({
   hoveredPoint: { x: number; y: number; z: number } | null
   previewCells: GridCell[]
   strokeMode: 'paint' | 'erase' | null
-  tool: DungeonTool
   propPlacement: PropPlacement | null
   propAssetId: string | null
   openingPlacement: OpeningPlacement | null
@@ -743,8 +791,8 @@ function HoverPreview({
   globalFloorAssetId: string | null
   wallSurfaceAssetIds: Record<string, string>
 }) {
-  // Prop tool OR floor-connected opening (e.g. stairs) — both use prop-style preview
-  if (tool === 'prop' || tool === 'character' || (tool === 'opening' && propAssetId)) {
+  // Prop-style preview, including floor-connected openings
+  if (propAssetId) {
     if (!hoveredCell || !hoveredPoint) return null
     const previewAsset = propAssetId ? getContentPackAssetById(propAssetId) : null
     if (previewAsset?.metadata?.connectsTo === 'FREE' && !propPlacement) {
@@ -764,7 +812,7 @@ function HoverPreview({
     )
   }
 
-  if (tool === 'room' && floorVariantAssetId) {
+  if (floorVariantAssetId) {
     if (!hoveredCell || !paintedCells[hoveredCell.key]) {
       return null
     }
@@ -785,7 +833,7 @@ function HoverPreview({
     )
   }
 
-  if (tool === 'room' && wallVariantAssetId) {
+  if (wallVariantAssetId) {
     if (!wallVariantPlacement?.valid) {
       return null
     }
@@ -811,7 +859,7 @@ function HoverPreview({
     )
   }
 
-  if (tool === 'opening') {
+  if (openingPlacement || openingAssetId || hoveredOpenWallKey || openPassageBrushWallKeys.length > 0) {
     if (wallConnectionMode === 'open') {
       return (
         <group>
@@ -1077,6 +1125,10 @@ function getPropPlacement(
   point: { x: number; y: number; z: number },
   paintedCells: Record<string, PaintedCellRecord>,
   surfaceHit: PlacementSurfaceHit | null,
+  cursorRay?: {
+    origin: [number, number, number]
+    direction: [number, number, number]
+  } | null,
 ): PropPlacement | null {
   // Use new placement system if asset has new metadata features
   // OR if it uses new ConnectsTo values (WALL, SURFACE, or arrays)
@@ -1099,6 +1151,7 @@ function getPropPlacement(
         objectId: surfaceHit.objectId,
         cell: surfaceHit.cell,
       } : null,
+      cursorRay,
     )
     
     if (!snapResult) {
@@ -1106,8 +1159,13 @@ function getPropPlacement(
     }
     
     // Convert to PropPlacement format
-    return {
-      connector: 'FLOOR', // Legacy field, not used with new system
+     return {
+      connector:
+        snapResult.connector.type === 'WALL'
+          ? 'WALL'
+          : snapResult.connector.type === 'SURFACE'
+            ? 'FREE'
+            : 'FLOOR',
       direction: null,
       cell: snapResult.cell,
       anchorKey: snapResult.cellKey,

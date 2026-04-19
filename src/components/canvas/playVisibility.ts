@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
 import { getContentPackAssetById } from '../../content-packs/registry'
+import { metadataSupportsConnectorType } from '../../content-packs/connectors'
 import { GRID_SIZE, getCellKey, type GridCell } from '../../hooks/useSnapToGrid'
 import { getOpeningSegments } from '../../store/openingSegments'
 import { useDungeonStore, type OpeningRecord, type PaintedCells } from '../../store/useDungeonStore'
@@ -1095,7 +1096,7 @@ function getBlockingObjectIdsByCell(
     }
 
     const asset = object.assetId ? getContentPackAssetById(object.assetId) : null
-    if (!asset?.metadata?.blocksLineOfSight || asset.metadata.connectsTo !== 'FLOOR') {
+    if (!asset?.metadata?.blocksLineOfSight || !metadataSupportsConnectorType(asset.metadata, 'FLOOR')) {
       continue
     }
 

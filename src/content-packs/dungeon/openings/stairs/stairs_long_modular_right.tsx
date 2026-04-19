@@ -9,7 +9,12 @@ export const dungeonStairsLongModularRightAsset = createDungeonAsset({
   modelName: 'stairs_long_modular_right',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     stairDirection: 'down',
   },
 })

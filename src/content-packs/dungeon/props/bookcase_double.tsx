@@ -9,11 +9,10 @@ export const dungeonBookcaseDoubleAsset = createDungeonAsset({
   modelName: 'bookcase_double',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: ['WALL', 'FLOOR'],
     snapsTo: 'GRID',
     connectors: [
       {
-        point: [0, 0, -0.5],  // Back of bookcase against wall
+        point: [0, 0, 0.125],  // Back of bookcase against wall
         type: 'WALL',
         rotation: [0, 0, 0],  // Faces outward from wall
       },

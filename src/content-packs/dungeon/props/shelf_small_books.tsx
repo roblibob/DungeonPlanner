@@ -9,7 +9,12 @@ export const dungeonShelfSmallBooksAsset = createDungeonAsset({
   modelName: 'shelf_small_books',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

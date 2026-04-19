@@ -9,7 +9,12 @@ export const dungeonCoinStackMediumAsset = createDungeonAsset({
   modelName: 'coin_stack_medium',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

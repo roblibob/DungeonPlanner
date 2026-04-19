@@ -9,7 +9,12 @@ export const dungeonTableRoundLargeAsset = createDungeonAsset({
   modelName: 'table_round_large',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'WALL',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'WALL',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

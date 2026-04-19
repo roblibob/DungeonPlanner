@@ -9,7 +9,13 @@ export const dungeonBarStraightAAsset = createDungeonAsset({
   modelName: 'bar_straight_A',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    snapsTo: 'FREE',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

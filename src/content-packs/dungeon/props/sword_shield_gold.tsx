@@ -9,7 +9,12 @@ export const dungeonSwordShieldGoldAsset = createDungeonAsset({
   modelName: 'sword_shield_gold',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

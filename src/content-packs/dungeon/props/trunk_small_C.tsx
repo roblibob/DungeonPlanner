@@ -9,7 +9,12 @@ export const dungeonTrunkSmallCAsset = createDungeonAsset({
   modelName: 'trunk_small_C',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

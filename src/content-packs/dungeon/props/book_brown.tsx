@@ -9,7 +9,16 @@ export const dungeonBookBrownAsset = createDungeonAsset({
   modelName: 'book_brown',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: ['FLOOR', 'SURFACE'],  // Can be placed on floor or surfaces
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+      {
+        point: [0, 0, 0],
+        type: 'SURFACE',
+      },
+    ],  // Can be placed on floor or surfaces
     snapsTo: 'FREE',
     blocksLineOfSight: false,
   },

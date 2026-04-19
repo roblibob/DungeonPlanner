@@ -9,7 +9,12 @@ export const dungeonWallEndcapAsset = createDungeonAsset({
   modelName: 'wall_endcap',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

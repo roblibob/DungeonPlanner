@@ -9,7 +9,12 @@ export const dungeonWallCornerSmallAsset = createDungeonAsset({
   modelName: 'wall_corner_small',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

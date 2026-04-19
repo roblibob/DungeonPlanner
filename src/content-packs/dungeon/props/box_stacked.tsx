@@ -9,7 +9,12 @@ export const dungeonBoxStackedAsset = createDungeonAsset({
   modelName: 'box_stacked',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

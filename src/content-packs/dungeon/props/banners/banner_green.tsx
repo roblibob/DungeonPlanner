@@ -9,7 +9,13 @@ export const dungeonBannerGreenAsset = createDungeonAsset({
   modelName: 'banner_green',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'WALL',
+    snapsTo: 'GRID',
+    connectors: [
+      {
+        point: [0, 0, 0.5],
+        type: 'WALL',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

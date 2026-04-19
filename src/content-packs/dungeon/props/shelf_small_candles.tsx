@@ -9,7 +9,12 @@ export const dungeonShelfSmallCandlesAsset = createDungeonAsset({
   modelName: 'shelf_small_candles',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
   getLight: (objectProps) => {

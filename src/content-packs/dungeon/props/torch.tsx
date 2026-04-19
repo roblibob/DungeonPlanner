@@ -1,5 +1,11 @@
+import type { ContentPackModelTransform } from '../../types'
 import { createDungeonAsset } from '../shared/createDungeonAsset'
-import { DUNGEON_PROP_TRANSFORM } from '../shared/dungeonConstants'
+
+const transform: ContentPackModelTransform = {
+  position: [0, 1, .125],
+  rotation: [0, 0, 0],
+  scale: 1,
+}
 
 export const dungeonTorchAsset = createDungeonAsset({
   id: 'dungeon.props_torch',
@@ -7,9 +13,14 @@ export const dungeonTorchAsset = createDungeonAsset({
   name: 'Dungeon Torch',
   category: 'prop',
   modelName: 'torch',
-  transform: DUNGEON_PROP_TRANSFORM,
+  transform,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
   getLight: (objectProps) => {

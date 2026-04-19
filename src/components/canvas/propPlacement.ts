@@ -1,6 +1,10 @@
-import type { ContentPackAsset, Connector, ConnectsTo, SnapsTo } from '../../content-packs/types'
-import { GRID_SIZE, type GridCell, snapWorldPointToGrid, cellToWorldPosition } from '../../hooks/useSnapToGrid'
+import { warnIfUsesDeprecatedConnectsTo } from '../../content-packs/deprecations'
+import { getMetadataConnectors } from '../../content-packs/connectors'
+import { Euler, Plane, Ray, Vector3 } from 'three'
+import type { ContentPackAsset, Connector, SnapsTo } from '../../content-packs/types'
+import { GRID_SIZE, cellToWorldPosition, getCellKey, type GridCell, snapWorldPointToGrid } from '../../hooks/useSnapToGrid'
 import type { PaintedCellRecord } from '../../store/useDungeonStore'
+import { isWallBoundary } from '../../store/wallSegments'
 
 export type SnapResult = {
   position: readonly [number, number, number]
@@ -13,301 +17,353 @@ export type SnapResult = {
   localRotation: readonly [number, number, number] | null
 }
 
-type WallSegment = {
+type CursorRay = {
+  origin: readonly [number, number, number]
+  direction: readonly [number, number, number]
+}
+
+type WallSnapPoint = {
   position: readonly [number, number, number]
   normal: readonly [number, number, number]
   direction: 'north' | 'south' | 'east' | 'west'
+  supportCell: GridCell
+  supportCellKey: string
+  distance: number
 }
 
-/**
- * Get default connector for an asset based on metadata
- */
-function getDefaultConnector(asset: ContentPackAsset): Connector {
-  const connectsTo = asset.metadata?.connectsTo ?? 'FLOOR'
-  
-  // Handle legacy PropConnector types
-  if (connectsTo === 'FREE' || connectsTo === 'WALLFLOOR') {
-    return {
-      point: [0, 0, 0],
-      type: 'FLOOR',
-    }
-  }
-  
-  // Handle new ConnectsTo types (including arrays)
-  if (Array.isArray(connectsTo)) {
-    // For arrays, use first type as default
-    return {
-      point: [0, 0, 0],
-      type: connectsTo[0],
-    }
-  }
-  
-  // Single ConnectsTo value
-  const type: ConnectsTo = connectsTo === 'WALL' ? 'WALL' : 
-                          connectsTo === 'SURFACE' ? 'SURFACE' :
-                          'FLOOR'
-  
-  return {
-    point: [0, 0, 0],
-    type,
-  }
+type SurfaceHit = {
+  position: readonly [number, number, number]
+  objectId: string
+  cell: GridCell
 }
 
-/**
- * Get all connectors for an asset (from metadata or inferred from connectsTo)
- */
+type SnapCandidate = SnapResult & {
+  distance: number
+}
+
+const WALL_SURFACE_OFFSET = 0.5
+
 function getAssetConnectors(asset: ContentPackAsset): Connector[] {
-  // Explicit connectors take priority
-  if (asset.metadata?.connectors && asset.metadata.connectors.length > 0) {
-    return asset.metadata.connectors as Connector[]
-  }
-  
-  const connectsTo = asset.metadata?.connectsTo
-  
-  // Handle array of connection types - create a connector for each
-  if (Array.isArray(connectsTo)) {
-    return connectsTo.map(type => ({
-      point: [0, 0, 0] as readonly [number, number, number],
-      type,
-    }))
-  }
-  
-  // Single connector
-  return [getDefaultConnector(asset)]
+  warnIfUsesDeprecatedConnectsTo(asset)
+  return getMetadataConnectors(asset.metadata)
 }
 
-/**
- * Snap position to grid center based on snapsTo mode
- */
-function applyGridSnapping(
-  worldPos: readonly [number, number, number],
-  snapsTo: SnapsTo,
-  connectType: ConnectsTo,
+function rotateConnectorPoint(
+  point: readonly [number, number, number],
+  rotation: readonly [number, number, number],
 ): readonly [number, number, number] {
-  if (snapsTo !== 'GRID') {
-    return worldPos
-  }
-  
-  if (connectType === 'FLOOR') {
-    // Snap to grid cell center
-    const snappedX = Math.round(worldPos[0] / GRID_SIZE) * GRID_SIZE
-    const snappedZ = Math.round(worldPos[2] / GRID_SIZE) * GRID_SIZE
-    return [snappedX, worldPos[1], snappedZ]
-  }
-  
-  if (connectType === 'WALL') {
-    // Snap to wall segment center (walls are on grid boundaries)
-    // For now, just snap X and Z to grid
-    const snappedX = Math.round(worldPos[0] / GRID_SIZE) * GRID_SIZE
-    const snappedZ = Math.round(worldPos[2] / GRID_SIZE) * GRID_SIZE
-    return [snappedX, worldPos[1], snappedZ]
-  }
-  
-  return worldPos
+  const rotated = new Vector3(...point).applyEuler(new Euler(...rotation))
+  return [rotated.x, rotated.y, rotated.z]
 }
 
-/**
- * Find nearby wall segments within threshold distance
- */
+function anchorObjectAtPoint(
+  anchor: readonly [number, number, number],
+  connectorPoint: readonly [number, number, number],
+  rotation: readonly [number, number, number],
+): readonly [number, number, number] {
+  const rotatedConnectorPoint = rotateConnectorPoint(connectorPoint, rotation)
+  return [
+    anchor[0] - rotatedConnectorPoint[0],
+    anchor[1] - rotatedConnectorPoint[1],
+    anchor[2] - rotatedConnectorPoint[2],
+  ]
+}
+
+function getDistance(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number],
+) {
+  return Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2])
+}
+
+function getWallAnchor(
+  wall: WallSnapPoint,
+  cursorPoint: { x: number; y: number; z: number },
+  snapsTo: SnapsTo,
+  cursorRay?: CursorRay | null,
+): readonly [number, number, number] {
+  if (snapsTo === 'GRID') {
+    return wall.position
+  }
+
+  if (cursorRay) {
+    const plane = new Plane().setFromNormalAndCoplanarPoint(
+      new Vector3(...wall.normal),
+      new Vector3(...wall.position),
+    )
+    const hit = new Vector3()
+    const ray = new Ray(new Vector3(...cursorRay.origin), new Vector3(...cursorRay.direction))
+
+    if (ray.intersectPlane(plane, hit)) {
+      return [hit.x, hit.y, hit.z]
+    }
+  }
+
+  if (wall.direction === 'north' || wall.direction === 'south') {
+    return [cursorPoint.x, wall.position[1], wall.position[2]]
+  }
+
+  return [wall.position[0], wall.position[1], cursorPoint.z]
+}
+
+function calculateWallRotation(
+  direction: WallSnapPoint['direction'],
+  connectorRotation?: readonly [number, number, number],
+): readonly [number, number, number] {
+  const baseRotationY =
+    direction === 'north'
+      ? Math.PI
+      : direction === 'south'
+        ? 0
+        : direction === 'east'
+          ? -Math.PI / 2
+          : Math.PI / 2
+
+  if (!connectorRotation) {
+    return [0, baseRotationY, 0]
+  }
+
+  return [
+    connectorRotation[0],
+    baseRotationY + connectorRotation[1],
+    connectorRotation[2],
+  ]
+}
+
 function findNearbyWalls(
   point: readonly [number, number, number],
   paintedCells: Record<string, PaintedCellRecord>,
-  threshold: number = GRID_SIZE / 4, // 0.5 grid units = 1 meter with GRID_SIZE=2
-): WallSegment[] {
-  const walls: WallSegment[] = []
+): WallSnapPoint[] {
+  const walls: WallSnapPoint[] = []
   const [x, , z] = point
-  
-  // Check for walls on grid boundaries
-  // Walls exist between painted cells
-  const snapped = snapWorldPointToGrid({ x, y: 0, z })
-  const cell = snapped.cell
-  
-  // Check all four directions for walls
-  const directions: Array<{ dir: 'north' | 'south' | 'east' | 'west'; dx: number; dz: number; normal: readonly [number, number, number] }> = [
-    { dir: 'north', dx: 0, dz: -1, normal: [0, 0, 1] },  // Wall to north, facing south
-    { dir: 'south', dx: 0, dz: 1, normal: [0, 0, -1] },  // Wall to south, facing north
-    { dir: 'east', dx: 1, dz: 0, normal: [-1, 0, 0] },   // Wall to east, facing west
-    { dir: 'west', dx: -1, dz: 0, normal: [1, 0, 0] },   // Wall to west, facing east
-  ]
-  
-  for (const { dir, dx, dz, normal } of directions) {
-    const neighborCell: GridCell = [cell[0] + dx, cell[1] + dz]
-    const neighborKey = `${neighborCell[0]}:${neighborCell[1]}`
-    const currentKey = `${cell[0]}:${cell[1]}`
-    
-    // Wall exists if one cell is painted and the other isn't (or different rooms)
-    const hasCurrent = !!paintedCells[currentKey]
-    const hasNeighbor = !!paintedCells[neighborKey]
-    
-    if (hasCurrent && !hasNeighbor) {
-      // Wall on this boundary
-      let wallPos: readonly [number, number, number]
-      
-      if (dir === 'north') {
-        wallPos = [cell[0] * GRID_SIZE, 0, cell[1] * GRID_SIZE - GRID_SIZE / 2]
-      } else if (dir === 'south') {
-        wallPos = [cell[0] * GRID_SIZE, 0, cell[1] * GRID_SIZE + GRID_SIZE / 2]
-      } else if (dir === 'east') {
-        wallPos = [cell[0] * GRID_SIZE + GRID_SIZE / 2, 0, cell[1] * GRID_SIZE]
-      } else { // west
-        wallPos = [cell[0] * GRID_SIZE - GRID_SIZE / 2, 0, cell[1] * GRID_SIZE]
+
+  for (const supportCellKey of Object.keys(paintedCells)) {
+    const supportCell = paintedCells[supportCellKey]?.cell
+    if (!supportCell) {
+      continue
+    }
+
+    const [cellX, cellZ] = supportCell
+    const [centerX, , centerZ] = cellToWorldPosition(supportCell)
+    const checks: Array<{
+      direction: WallSnapPoint['direction']
+      neighbor: GridCell
+      position: readonly [number, number, number]
+      normal: readonly [number, number, number]
+    }> = [
+      {
+        direction: 'north',
+        neighbor: [cellX, cellZ + 1],
+        position: [centerX, 0, (cellZ + 1) * GRID_SIZE],
+        normal: [0, 0, -1],
+      },
+      {
+        direction: 'south',
+        neighbor: [cellX, cellZ - 1],
+        position: [centerX, 0, cellZ * GRID_SIZE],
+        normal: [0, 0, 1],
+      },
+      {
+        direction: 'east',
+        neighbor: [cellX + 1, cellZ],
+        position: [(cellX + 1) * GRID_SIZE, 0, centerZ],
+        normal: [-1, 0, 0],
+      },
+      {
+        direction: 'west',
+        neighbor: [cellX - 1, cellZ],
+        position: [cellX * GRID_SIZE, 0, centerZ],
+        normal: [1, 0, 0],
+      },
+    ]
+
+    for (const { direction, neighbor, position, normal } of checks) {
+      if (!isWallBoundary(supportCell, neighbor, paintedCells)) {
+        continue
       }
-      
-      // Check if within threshold distance
-      const distance = Math.sqrt(
-        Math.pow(x - wallPos[0], 2) + Math.pow(z - wallPos[2], 2)
-      )
-      
-      if (distance <= threshold) {
-        walls.push({
-          position: wallPos,
-          normal,
-          direction: dir,
-        })
-      }
+
+      const surfacePosition: readonly [number, number, number] = [
+        position[0] + normal[0] * WALL_SURFACE_OFFSET,
+        position[1] + normal[1] * WALL_SURFACE_OFFSET,
+        position[2] + normal[2] * WALL_SURFACE_OFFSET,
+      ]
+
+      walls.push({
+        position: surfacePosition,
+        normal,
+        direction,
+        supportCell,
+        supportCellKey,
+        distance: Math.hypot(x - surfacePosition[0], z - surfacePosition[2]),
+      })
     }
   }
-  
+
+  walls.sort((left, right) => left.distance - right.distance)
   return walls
 }
 
-/**
- * Calculate rotation to align connector with wall normal
- */
-function calculateWallRotation(
-  wallNormal: readonly [number, number, number],
-  connectorRotation?: readonly [number, number, number],
-): readonly [number, number, number] {
-  // Calculate Y rotation to face away from wall
-  let yRotation = 0
-  
-  if (wallNormal[0] === 1) yRotation = Math.PI / 2      // West wall, face east
-  else if (wallNormal[0] === -1) yRotation = -Math.PI / 2  // East wall, face west
-  else if (wallNormal[2] === 1) yRotation = Math.PI     // North wall, face south
-  else if (wallNormal[2] === -1) yRotation = 0          // South wall, face north
-  
-  // Apply connector's base rotation if specified
-  if (connectorRotation) {
-    return [
-      connectorRotation[0],
-      yRotation + connectorRotation[1],
-      connectorRotation[2],
-    ]
+function getFloorSelectionAnchor(cursorPoint: { x: number; y: number; z: number }) {
+  const snapped = snapWorldPointToGrid(cursorPoint)
+
+  return {
+    anchor: cellToWorldPosition(snapped.cell),
+    cell: snapped.cell,
+    cellKey: snapped.key,
   }
-  
-  return [0, yRotation, 0]
 }
 
-/**
- * Calculate snap position for a prop with advanced placement logic
- */
+function getFloorAnchor(
+  cursorPoint: { x: number; y: number; z: number },
+  snapsTo: SnapsTo,
+): { anchor: readonly [number, number, number]; cell: GridCell; cellKey: string } {
+  const snapped = getFloorSelectionAnchor(cursorPoint)
+
+  if (snapsTo === 'GRID') {
+    return snapped
+  }
+
+  return {
+    anchor: [cursorPoint.x, 0, cursorPoint.z],
+    cell: snapped.cell,
+    cellKey: snapped.cellKey,
+  }
+}
+
+function getSelectionPoint(
+  cursorPoint: { x: number; y: number; z: number },
+  surfaceHit: SurfaceHit | null,
+): readonly [number, number, number] {
+  if (surfaceHit) {
+    return surfaceHit.position
+  }
+
+  return [cursorPoint.x, 0, cursorPoint.z]
+}
+
+function createWallCandidates(
+  connectors: Connector[],
+  selectionPoint: readonly [number, number, number],
+  cursorPoint: { x: number; y: number; z: number },
+  paintedCells: Record<string, PaintedCellRecord>,
+  snapsTo: SnapsTo,
+  cursorRay?: CursorRay | null,
+): SnapCandidate[] {
+  const walls = findNearbyWalls(selectionPoint, paintedCells)
+
+  return connectors
+    .filter((connector) => connector.type === 'WALL')
+    .flatMap((connector) =>
+      walls.map((wall) => {
+        const rotation = calculateWallRotation(wall.direction, connector.rotation)
+        const finalAnchor = getWallAnchor(wall, cursorPoint, snapsTo, cursorRay)
+
+        return {
+          distance: getDistance(wall.position, selectionPoint),
+          position: anchorObjectAtPoint(finalAnchor, connector.point, rotation),
+          rotation,
+          cell: wall.supportCell,
+          cellKey: wall.supportCellKey,
+          connector,
+          parentObjectId: null,
+          localPosition: null,
+          localRotation: null,
+        }
+      }),
+    )
+}
+
+function createSurfaceCandidates(
+  connectors: Connector[],
+  selectionPoint: readonly [number, number, number],
+  surfaceHit: SurfaceHit | null,
+): SnapCandidate[] {
+  if (!surfaceHit) {
+    return []
+  }
+
+  return connectors
+    .filter((connector) => connector.type === 'SURFACE')
+    .map((connector) => {
+      const rotation = connector.rotation ?? [0, 0, 0]
+
+      return {
+        distance: getDistance(surfaceHit.position, selectionPoint),
+        position: anchorObjectAtPoint(surfaceHit.position, connector.point, rotation),
+        rotation,
+        cell: surfaceHit.cell,
+        cellKey: getCellKey(surfaceHit.cell),
+        connector,
+        parentObjectId: surfaceHit.objectId,
+        localPosition: [0, 0, 0],
+        localRotation: rotation,
+      }
+    })
+}
+
+function createFloorCandidates(
+  connectors: Connector[],
+  selectionPoint: readonly [number, number, number],
+  cursorPoint: { x: number; y: number; z: number },
+  snapsTo: SnapsTo,
+): SnapCandidate[] {
+  const selectionAnchor = getFloorSelectionAnchor(cursorPoint)
+  const finalAnchor = getFloorAnchor(cursorPoint, snapsTo)
+
+  return connectors
+    .filter((connector) => connector.type === 'FLOOR')
+    .map((connector) => {
+      const rotation = connector.rotation ?? [0, 0, 0]
+
+      return {
+        distance: getDistance(selectionAnchor.anchor, selectionPoint),
+        position: anchorObjectAtPoint(finalAnchor.anchor, connector.point, rotation),
+        rotation,
+        cell: finalAnchor.cell,
+        cellKey: finalAnchor.cellKey,
+        connector,
+        parentObjectId: null,
+        localPosition: null,
+        localRotation: null,
+      }
+    })
+}
+
 export function calculatePropSnapPosition(
   asset: ContentPackAsset,
   cursorPoint: { x: number; y: number; z: number },
   paintedCells: Record<string, PaintedCellRecord>,
-  surfaceHit: { position: readonly [number, number, number]; objectId: string; cell: GridCell } | null,
+  surfaceHit: SurfaceHit | null,
+  cursorRay?: CursorRay | null,
 ): SnapResult | null {
   const connectors = getAssetConnectors(asset)
   const snapsTo = asset.metadata?.snapsTo ?? 'FREE'
-  const point: readonly [number, number, number] = [cursorPoint.x, cursorPoint.y, cursorPoint.z]
-  
-  // Check for nearby walls (for WALL connectors)
-  const nearbyWalls = findNearbyWalls(point, paintedCells)
-  
-  // Choose best connector based on context
-  let chosenConnector: Connector | null = null
-  let finalPosition: readonly [number, number, number] = point
-  let finalRotation: readonly [number, number, number] = [0, 0, 0]
-  let parentObjectId: string | null = null
-  let localPosition: readonly [number, number, number] | null = null
-  let localRotation: readonly [number, number, number] | null = null
-  
-  // Priority: WALL > SURFACE > FLOOR
-  const wallConnector = connectors.find(c => c.type === 'WALL')
-  const surfaceConnector = connectors.find(c => c.type === 'SURFACE')
-  const floorConnector = connectors.find(c => c.type === 'FLOOR')
-  
-  if (wallConnector && nearbyWalls.length > 0) {
-    // Snap to nearest wall
-    const wall = nearbyWalls[0]
-    chosenConnector = wallConnector
-    
-    // Position connector point at wall surface
-    const connectorOffset = wallConnector.point
-    finalPosition = [
-      wall.position[0] - connectorOffset[0],
-      wall.position[1] - connectorOffset[1],
-      wall.position[2] - connectorOffset[2],
-    ]
-    
-    // Apply grid snapping if enabled
-    finalPosition = applyGridSnapping(finalPosition, snapsTo, 'WALL')
-    
-    // Rotate to face away from wall
-    finalRotation = calculateWallRotation(wall.normal, wallConnector.rotation)
-    
-  } else if (surfaceConnector && surfaceHit) {
-    // Place on surface
-    chosenConnector = surfaceConnector
-    
-    const connectorOffset = surfaceConnector.point
-    finalPosition = [
-      surfaceHit.position[0] - connectorOffset[0],
-      surfaceHit.position[1] - connectorOffset[1],
-      surfaceHit.position[2] - connectorOffset[2],
-    ]
-    
-    parentObjectId = surfaceHit.objectId
-    localPosition = [0, 0, 0]  // Offset from parent
-    localRotation = surfaceConnector.rotation ?? [0, 0, 0]
-    
-  } else if (floorConnector) {
-    // Default to floor placement
-    chosenConnector = floorConnector
-    
-    const snapped = snapWorldPointToGrid(cursorPoint)
-    const cellCenter = cellToWorldPosition(snapped.cell)
-    
-    const connectorOffset = floorConnector.point
-    let basePosition: readonly [number, number, number] = [
-      cursorPoint.x - connectorOffset[0],
-      0 - connectorOffset[1],
-      cursorPoint.z - connectorOffset[2],
-    ]
-    
-    // Apply grid snapping if enabled
-    if (snapsTo === 'GRID') {
-      basePosition = [
-        cellCenter[0] - connectorOffset[0],
-        0 - connectorOffset[1],
-        cellCenter[2] - connectorOffset[2],
-      ]
-    }
-    
-    finalPosition = basePosition
-    finalRotation = floorConnector.rotation ?? [0, 0, 0]
-  }
-  
-  if (!chosenConnector) {
+  const selectionPoint = getSelectionPoint(cursorPoint, surfaceHit)
+  const candidates = [
+    ...createWallCandidates(connectors, selectionPoint, cursorPoint, paintedCells, snapsTo, cursorRay),
+    ...createSurfaceCandidates(connectors, selectionPoint, surfaceHit),
+    ...createFloorCandidates(connectors, selectionPoint, cursorPoint, snapsTo),
+  ]
+
+  if (candidates.length === 0) {
     return null
   }
-  
-  // Get cell for final position
-  const snapped = snapWorldPointToGrid({ x: finalPosition[0], y: finalPosition[1], z: finalPosition[2] })
-  
-  // Check if cell is painted (required for placement)
-  if (!paintedCells[snapped.key] && !parentObjectId) {
+
+  candidates.sort((left, right) => left.distance - right.distance)
+  const chosen = candidates[0]
+
+  if (!chosen.parentObjectId && !paintedCells[chosen.cellKey]) {
     return null
   }
-  
+
   return {
-    position: finalPosition,
-    rotation: finalRotation,
-    cell: snapped.cell,
-    cellKey: snapped.key,
-    connector: chosenConnector,
-    parentObjectId,
-    localPosition,
-    localRotation,
+    position: chosen.position,
+    rotation: chosen.rotation,
+    cell: chosen.cell,
+    cellKey: chosen.cellKey,
+    connector: chosen.connector,
+    parentObjectId: chosen.parentObjectId,
+    localPosition: chosen.localPosition,
+    localRotation: chosen.localRotation,
   }
 }

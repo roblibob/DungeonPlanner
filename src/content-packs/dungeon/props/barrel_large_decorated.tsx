@@ -9,7 +9,12 @@ export const dungeonBarrelLargeDecoratedAsset = createDungeonAsset({
   modelName: 'barrel_large_decorated',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

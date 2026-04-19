@@ -9,7 +9,12 @@ export const dungeonRubbleHalfAsset = createDungeonAsset({
   modelName: 'rubble_half',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

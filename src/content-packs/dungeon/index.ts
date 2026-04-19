@@ -1,4 +1,8 @@
-import type { ContentPack } from '../types'
+import { defaultAssetForCategory, type ContentPack } from '../types'
+import { dungeonStairsAsset } from './openings/stairs/stairs'
+import { dungeonTorchLitAsset } from './props/torch_lit'
+import { dungeonFloorTileSmallAsset } from './tiles/floors/floor_tile_small'
+import { dungeonWallAsset } from './tiles/walls/wall'
 import { dungeonFloorAssets } from './tiles/floors'
 import { dungeonWallAssets } from './tiles/walls'
 import { dungeonStairAssets } from './openings/stairs'
@@ -14,9 +18,9 @@ export const dungeonContentPack: ContentPack = {
     ...dungeonPropAssets,
   ],
   defaultAssets: {
-    floor: 'dungeon.floor_floor_tile',
-    wall: 'dungeon.wall_wall',
-    opening: 'dungeon.stairs_stairs',
-    prop: 'dungeon.props_torch_lit',
+    floor: defaultAssetForCategory('floor', dungeonFloorTileSmallAsset),
+    wall: defaultAssetForCategory('wall', dungeonWallAsset),
+    opening: defaultAssetForCategory('opening', dungeonStairsAsset),
+    prop: defaultAssetForCategory('prop', dungeonTorchLitAsset),
   },
 }

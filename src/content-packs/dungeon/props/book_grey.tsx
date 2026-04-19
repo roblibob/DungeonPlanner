@@ -9,7 +9,12 @@ export const dungeonBookGreyAsset = createDungeonAsset({
   modelName: 'book_grey',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

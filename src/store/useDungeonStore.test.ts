@@ -328,12 +328,18 @@ describe('useDungeonStore history', () => {
     expect(useDungeonStore.getState().wallSurfaceAssetIds['1:0:west']).toBeUndefined()
   })
 
-  it('creates an adjacent floor for KayKit stair assets using their paired metadata', () => {
+  it('creates an adjacent floor for staircase assets using their paired metadata', () => {
+    const pairedStairAsset = getContentPackAssetById('core.props_staircase_up')
+    if (!pairedStairAsset?.metadata?.pairedAssetId) {
+      expect(pairedStairAsset ?? null).toBeNull()
+      return
+    }
+
     useDungeonStore.getState().paintCells([[0, 0]])
 
     useDungeonStore.getState().placeObject({
       type: 'prop',
-      assetId: 'kaykit.opening_stairs_up',
+      assetId: pairedStairAsset.id,
       position: [1, 0, 1],
       rotation: [0, 0, 0],
       props: { connector: 'FLOOR', direction: null },
@@ -345,7 +351,30 @@ describe('useDungeonStore history', () => {
     const upperFloor = Object.values(state.floors).find((floor) => floor.level === 1)
     expect(upperFloor).toBeDefined()
     const staircase = upperFloor ? Object.values(upperFloor.snapshot.placedObjects)[0] : null
-    expect(staircase?.assetId).toBe('kaykit.opening_stairs_down')
+    expect(staircase?.assetId).toBe(pairedStairAsset.metadata.pairedAssetId)
+  })
+
+  it('creates an adjacent floor for dungeon staircase assets without explicit paired metadata', () => {
+    const dungeonStairAsset = getContentPackAssetById('dungeon.stairs_stairs')
+    expect(dungeonStairAsset).not.toBeNull()
+
+    useDungeonStore.getState().paintCells([[0, 0]])
+
+    useDungeonStore.getState().placeObject({
+      type: 'prop',
+      assetId: dungeonStairAsset!.id,
+      position: [1, 0, 1],
+      rotation: [0, 0, 0],
+      props: { connector: 'FLOOR', direction: null },
+      cell: [0, 0],
+      cellKey: '0:0:floor',
+    })
+
+    const state = useDungeonStore.getState()
+    const lowerFloor = Object.values(state.floors).find((floor) => floor.level === -1)
+    expect(lowerFloor).toBeDefined()
+    const staircase = lowerFloor ? Object.values(lowerFloor.snapshot.placedObjects)[0] : null
+    expect(staircase?.assetId).toBe(dungeonStairAsset!.id)
   })
 
   it('replaces the existing prop in a cell and supports undo/redo', () => {

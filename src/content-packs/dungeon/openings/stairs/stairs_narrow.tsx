@@ -9,7 +9,12 @@ export const dungeonStairsNarrowAsset = createDungeonAsset({
   modelName: 'stairs_narrow',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     stairDirection: 'down',
   },
 })

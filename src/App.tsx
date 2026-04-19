@@ -2,13 +2,17 @@ import { Suspense, lazy, useEffect, useEffectEvent, useState } from 'react'
 import { overlayDomRef } from './components/canvas/floorTransition'
 import { getDefaultAssetIdByCategory } from './content-packs/registry'
 import { getContentPackAssetById } from './content-packs/registry'
+import {
+  getContentPackAssetSourceLink,
+  getContentPackAssetSourcePath,
+  getDebugPanelAssetId,
+} from './content-packs/debugSourceLinks'
 import { EditorToolbar } from './components/editor/EditorToolbar'
 import { CameraDropdown } from './components/editor/CameraDropdown'
 import { MoveToolPanel } from './components/editor/MoveToolPanel'
 import { RoomToolPanel } from './components/editor/RoomToolPanel'
 import { PropToolPanel } from './components/editor/PropToolPanel'
 import { CharacterToolPanel } from './components/editor/CharacterToolPanel'
-import { OpeningToolPanel } from './components/editor/OpeningToolPanel'
 import { SelectToolPanel } from './components/editor/SelectToolPanel'
 import { LayerPanel } from './components/editor/LayerPanel'
 import { ScenePanel } from './components/editor/ScenePanel'
@@ -21,7 +25,9 @@ import {
   getRectangleCells,
   type GridCell,
 } from './hooks/useSnapToGrid'
-import type { CameraPreset } from './store/useDungeonStore'
+import type {
+  CameraPreset,
+} from './store/useDungeonStore'
 import { RotateCcw } from 'lucide-react'
 
 const Scene = lazy(() =>
@@ -58,9 +64,7 @@ function RightPanel() {
                   ? 'Room'
                   : tool === 'character'
                     ? 'Characters'
-                  : tool === 'opening'
-                    ? 'Connections'
-                    : 'Props'}
+                    : 'Assets'}
         </p>
         {tool === 'play' && null}
         {tool === 'select' && <SelectToolPanel />}
@@ -68,7 +72,6 @@ function RightPanel() {
         {tool === 'room' && <RoomToolPanel />}
         {tool === 'character' && <CharacterToolPanel />}
         {tool === 'prop' && <PropToolPanel />}
-        {tool === 'opening' && <OpeningToolPanel />}
       </div>
 
       {/* Layers — always visible at the bottom */}
@@ -84,6 +87,16 @@ function App() {
   const roomEditMode = useDungeonStore((state) => state.roomEditMode)
   const isPlayMode = tool === 'play'
   const [debugPanelOpen, setDebugPanelOpen] = useState(false)
+  const selectedAssetIds = useDungeonStore((state) => state.selectedAssetIds)
+  const surfaceBrushAssetIds = useDungeonStore((state) => state.surfaceBrushAssetIds)
+  const assetBrowser = useDungeonStore((state) => state.assetBrowser)
+  const selection = useDungeonStore((state) => state.selection)
+  const selectedObject = useDungeonStore((state) =>
+    selection ? state.placedObjects[selection] : null,
+  )
+  const selectedOpening = useDungeonStore((state) =>
+    selection ? state.wallOpenings[selection] : null,
+  )
   const propCount = useDungeonStore(
     (state) => Object.keys(state.placedObjects).length,
   )
@@ -102,6 +115,17 @@ function App() {
   const setShowLosDebugRays = useDungeonStore((state) => state.setShowLosDebugRays)
   const setShowLensFocusDebugPoint = useDungeonStore((state) => state.setShowLensFocusDebugPoint)
   const setShowProjectionDebugMesh = useDungeonStore((state) => state.setShowProjectionDebugMesh)
+  const debugAssetId = getDebugPanelAssetId({
+    tool,
+    selectedAssetIds,
+    surfaceBrushAssetIds,
+    assetBrowser,
+    selectedObject,
+    selectedOpening,
+  })
+  const debugAsset = debugAssetId ? getContentPackAssetById(debugAssetId) : null
+  const debugAssetSourcePath = debugAssetId ? getContentPackAssetSourcePath(debugAssetId) : null
+  const debugAssetSourceLink = debugAssetId ? getContentPackAssetSourceLink(debugAssetId) : null
 
   const onWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.ctrlKey && event.shiftKey && event.key === 'F12') {
@@ -239,6 +263,11 @@ function App() {
           object.position[2],
         ])
       },
+      getCellScreenPosition: (cell: GridCell) => {
+        const [worldX, , worldZ] = cellToWorldPosition(cell)
+        return projectDebugWorldPoint([worldX, 1, worldZ])
+      },
+      getAssetSourceLink: (assetId: string) => getContentPackAssetSourceLink(assetId),
     }
 
     return () => {
@@ -259,9 +288,9 @@ function App() {
               : 'Pick a wall variant · click a wall segment to apply it · right-click to clear the wall override'
         : tool === 'character'
           ? 'Select a character to place · click a room cell to place it · use Edit to reopen the character sheet'
-        : tool === 'opening'
-          ? 'Choose Wall, Door, or Open passage · click shared walls to connect rooms'
-        : 'Click to place · R to rotate · right-click to remove · Alt+click to inspect'
+        : tool === 'prop'
+          ? 'Browse props, openings, and surfaces in one place · placement behavior adapts to the selected asset'
+          : 'Click to place · R to rotate · right-click to remove · Alt+click to inspect'
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100">
@@ -313,9 +342,7 @@ function App() {
                         ? 'Characters'
                       : tool === 'room'
                         ? 'Room'
-                        : tool === 'opening'
-                          ? 'Connections'
-                          : 'Prop'}
+                        : 'Assets'}
               </p>
               <p className="mt-1.5 text-xs text-stone-400">{toolHint}</p>
             </div>
@@ -332,6 +359,9 @@ function App() {
                 setShowLosDebugRays={setShowLosDebugRays}
                 setShowLensFocusDebugPoint={setShowLensFocusDebugPoint}
                 setShowProjectionDebugMesh={setShowProjectionDebugMesh}
+                debugAssetName={debugAsset?.name ?? null}
+                debugAssetSourcePath={debugAssetSourcePath}
+                debugAssetSourceLink={debugAssetSourceLink}
               />
             )}
 
@@ -378,6 +408,9 @@ function DebugVisibilityPanel({
   setShowLosDebugRays,
   setShowLensFocusDebugPoint,
   setShowProjectionDebugMesh,
+  debugAssetName,
+  debugAssetSourcePath,
+  debugAssetSourceLink,
 }: {
   exploredCellCount: number
   clearExploredCells: () => void
@@ -389,6 +422,9 @@ function DebugVisibilityPanel({
   setShowLosDebugRays: (show: boolean) => void
   setShowLensFocusDebugPoint: (show: boolean) => void
   setShowProjectionDebugMesh: (show: boolean) => void
+  debugAssetName: string | null
+  debugAssetSourcePath: string | null
+  debugAssetSourceLink: string | null
 }) {
   return (
     <aside
@@ -433,6 +469,27 @@ function DebugVisibilityPanel({
           pressed={showProjectionDebugMesh}
           onClick={() => setShowProjectionDebugMesh(!showProjectionDebugMesh)}
         />
+      </div>
+
+      <div className="rounded-xl border border-stone-800 bg-stone-900/90 p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
+          Asset source
+        </p>
+        <p className="mt-2 text-sm text-stone-200">{debugAssetName ?? 'No asset selected'}</p>
+        <p className="mt-1 break-all text-xs text-stone-500">
+          {debugAssetSourcePath ?? 'Select a placed asset or active browser asset from the dungeon pack.'}
+        </p>
+        <a
+          href={debugAssetSourceLink ?? undefined}
+          aria-disabled={!debugAssetSourceLink}
+          className={`mt-3 inline-flex w-full items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] transition ${
+            debugAssetSourceLink
+              ? 'border-sky-300/25 bg-sky-500/10 text-sky-200 hover:border-sky-300/40 hover:bg-sky-500/15'
+              : 'pointer-events-none border-stone-800 bg-stone-950/60 text-stone-500'
+          }`}
+        >
+          Open in VS Code
+        </a>
       </div>
     </aside>
   )

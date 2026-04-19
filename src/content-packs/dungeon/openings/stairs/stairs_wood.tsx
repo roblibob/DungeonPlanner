@@ -1,15 +1,26 @@
 import { createDungeonAsset } from '../../shared/createDungeonAsset'
-import { DUNGEON_PROP_TRANSFORM } from '../../shared/dungeonConstants'
+
+const DUNGEON_STAIRS_WOOD_DOWN_TRANSFORM = {
+  position: [0, -2, -1] as const,
+  rotation: [0, 0, 0] as const,
+}
 
 export const dungeonStairsWoodAsset = createDungeonAsset({
   id: 'dungeon.stairs_stairs_wood',
   slug: 'dungeon-stairs-stairs-wood',
-  name: 'Dungeon Stairs Wood',
+  name: 'Dungeon Stairs Wood Down',
   category: 'opening',
   modelName: 'stairs_wood',
-  transform: DUNGEON_PROP_TRANSFORM,
+  transform: DUNGEON_STAIRS_WOOD_DOWN_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    snapsTo: 'GRID',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     stairDirection: 'down',
+    pairedAssetId: 'dungeon.stairs_stairs_wood_up',
   },
 })

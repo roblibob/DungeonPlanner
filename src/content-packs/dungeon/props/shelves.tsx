@@ -9,7 +9,14 @@ export const dungeonShelvesAsset = createDungeonAsset({
   modelName: 'shelves',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    snapsTo: 'GRID',
     blocksLineOfSight: false,
+    connectors: [
+      {
+        point: [0, 0, 0.25],
+        type: 'WALL',
+        rotation: [0, 0, 0],  // Faces outward from wall
+      },
+    ]
   },
 })

@@ -9,7 +9,12 @@ export const dungeonCrateLargeDecoratedAsset = createDungeonAsset({
   modelName: 'crate_large_decorated',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

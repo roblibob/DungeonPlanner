@@ -1,20 +1,12 @@
-import type { PropConnector, ConnectsTo } from '../../content-packs/types'
+import { metadataSupportsConnectorType } from '../../content-packs/connectors'
+import type { ContentPackAssetMetadata } from '../../content-packs/types'
 import type { WallConnectionMode } from '../../store/useDungeonStore'
 
 export function getOpeningToolMode(
   wallConnectionMode: WallConnectionMode,
-  connector: PropConnector | ConnectsTo | ConnectsTo[] | undefined,
+  metadata: ContentPackAssetMetadata | undefined,
 ) {
-  // Handle arrays - check if any connector is FLOOR
-  if (Array.isArray(connector)) {
-    const hasFloor = connector.includes('FLOOR')
-    if (wallConnectionMode === 'door' && hasFloor) {
-      return 'floor-asset'
-    }
-    return 'wall-connection'
-  }
-  
-  if (wallConnectionMode === 'door' && (connector ?? 'FLOOR') === 'FLOOR') {
+  if (wallConnectionMode === 'door' && metadataSupportsConnectorType(metadata, 'FLOOR')) {
     return 'floor-asset'
   }
 

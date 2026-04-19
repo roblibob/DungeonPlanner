@@ -9,7 +9,12 @@ export const dungeonBedBDoubleAsset = createDungeonAsset({
   modelName: 'bed_B_double',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

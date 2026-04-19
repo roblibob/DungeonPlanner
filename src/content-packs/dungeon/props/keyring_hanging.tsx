@@ -9,7 +9,12 @@ export const dungeonKeyringHangingAsset = createDungeonAsset({
   modelName: 'keyring_hanging',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

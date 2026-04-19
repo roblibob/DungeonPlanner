@@ -9,7 +9,12 @@ export const dungeonStairsModularCenterAsset = createDungeonAsset({
   modelName: 'stairs_modular_center',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     stairDirection: 'down',
   },
 })

@@ -55,6 +55,12 @@ export function createDungeonAsset(definition: DungeonAssetDefinition): ContentP
   const thumbnailUrl = resolveDungeonAssetUrl(definition.thumbnailName ?? definition.modelName, 'png')
   const resolvedTransform = resolveTransform(definition.transform)
   const Component = createStaticModelComponent(assetUrl, definition.transform)
+  const metadata = definition.metadata?.stairDirection
+    ? {
+        ...definition.metadata,
+        snapsTo: definition.metadata.snapsTo ?? 'GRID',
+      }
+    : definition.metadata
 
   return {
     id: definition.id,
@@ -72,7 +78,7 @@ export function createDungeonAsset(definition: DungeonAssetDefinition): ContentP
       getAssetUrl: () => assetUrl,
       transform: resolvedTransform,
     },
-    ...(definition.metadata ? { metadata: definition.metadata } : {}),
+    ...(metadata ? { metadata } : {}),
     ...(definition.getLight ? { getLight: definition.getLight } : {}),
     ...(definition.getPlayModeNextProps ? { getPlayModeNextProps: definition.getPlayModeNextProps } : {}),
   }

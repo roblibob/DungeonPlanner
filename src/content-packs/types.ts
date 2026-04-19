@@ -24,6 +24,35 @@ export type ContentPackBatchRender = {
 }
 export type ConnectsTo = 'FLOOR' | 'WALL' | 'SURFACE'
 export type SnapsTo = 'GRID' | 'FREE'
+export type AssetBrowserCategory =
+  | 'furniture'
+  | 'storage'
+  | 'decor'
+  | 'treasure'
+  | 'structure'
+  | 'openings'
+  | 'surfaces'
+export type AssetBrowserSubcategory =
+  | 'tables'
+  | 'seating'
+  | 'beds'
+  | 'shelving'
+  | 'containers'
+  | 'barrels'
+  | 'lighting'
+  | 'banners'
+  | 'tabletop'
+  | 'books'
+  | 'loot'
+  | 'tools'
+  | 'rubble'
+  | 'pillars'
+  | 'bars'
+  | 'doors'
+  | 'stairs'
+  | 'floors'
+  | 'walls'
+  | 'misc'
 
 export type Connector = {
   /** Position in local object space relative to model origin */
@@ -57,7 +86,10 @@ export type TileSpan = {
 }
 
 export type ContentPackAssetMetadata = {
-  /** What this asset connects to. Supports single value, array, or legacy PropConnector types */
+  /**
+   * @deprecated Use `connectors` instead so placement behavior is defined per connector.
+   * What this asset connects to. Supports single value, array, or legacy PropConnector types.
+   */
   connectsTo?: PropConnector | ConnectsTo | ConnectsTo[]
   /** How this asset snaps during placement: GRID (snap to grid/wall centers) or FREE (freeform) */
   snapsTo?: SnapsTo
@@ -82,6 +114,12 @@ export type ContentPackAssetMetadata = {
   pairedAssetId?: string
   /** How many grid cells this floor/ceiling tile spans. Default is 1x1. */
   tileSpan?: TileSpan
+  /** User-facing browser grouping for unified asset placement. */
+  browserCategory?: AssetBrowserCategory
+  /** Secondary browser grouping within a top-level category. */
+  browserSubcategory?: AssetBrowserSubcategory
+  /** Optional filter tags exposed by the asset browser. */
+  browserTags?: string[]
 }
 
 export type ContentPackAsset = {
@@ -106,12 +144,23 @@ export type ContentPack = {
   id: string
   name: string
   assets: ContentPackAsset[]
-  /** Optional default asset IDs for each category */
+  /** Optional default assets for each category. Using the asset object keeps defaults type-safe. */
   defaultAssets?: {
-    floor?: string
-    wall?: string
-    opening?: string
-    prop?: string
-    player?: string
+    floor?: ContentPackAsset & { category: 'floor' }
+    wall?: ContentPackAsset & { category: 'wall' }
+    opening?: ContentPackAsset & { category: 'opening' }
+    prop?: ContentPackAsset & { category: 'prop' }
+    player?: ContentPackAsset & { category: 'player' }
   }
+}
+
+export function defaultAssetForCategory<TCategory extends ContentPackCategory>(
+  category: TCategory,
+  asset: ContentPackAsset,
+) {
+  if (asset.category !== category) {
+    throw new Error(`Default asset category mismatch: expected ${category}, got ${asset.category}`)
+  }
+
+  return asset as ContentPackAsset & { category: TCategory }
 }

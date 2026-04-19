@@ -9,7 +9,12 @@ export const dungeonStairsWalledAsset = createDungeonAsset({
   modelName: 'stairs_walled',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     stairDirection: 'down',
   },
 })

@@ -9,7 +9,12 @@ export const dungeonBartopASmallAsset = createDungeonAsset({
   modelName: 'bartop_A_small',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'WALL',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'WALL',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

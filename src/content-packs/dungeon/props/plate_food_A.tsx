@@ -9,7 +9,12 @@ export const dungeonPlateFoodAAsset = createDungeonAsset({
   modelName: 'plate_food_A',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

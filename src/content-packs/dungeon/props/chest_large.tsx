@@ -9,7 +9,12 @@ export const dungeonChestLargeAsset = createDungeonAsset({
   modelName: 'chest_large',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })

@@ -3,7 +3,7 @@ import { createDungeonAsset } from '../shared/createDungeonAsset'
 
 
 const transform: ContentPackModelTransform = {
-  position: [0, 1, .125],
+  position: [0, 0.9, -0.4],
   rotation: [0, 0, 0],
   scale: 1,
 } 
@@ -16,12 +16,11 @@ export const dungeonTorchMountedAsset = createDungeonAsset({
   modelName: 'torch_mounted',
   transform,
   metadata: {
-    connectsTo: 'WALL',
     snapsTo: 'GRID',
     connectors: [
       {
         type: 'WALL',
-        point: [0, 1, -0.125], // Back of torch against wall
+        point: [0, 0, 0],
       }
     ],
     blocksLineOfSight: false,

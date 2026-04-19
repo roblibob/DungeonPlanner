@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { getDefaultAssetIdByCategory } from '../content-packs/registry'
+import { getContentPackAssetById, getDefaultAssetIdByCategory } from '../content-packs/registry'
 import { getCellKey, type GridCell } from '../hooks/useSnapToGrid'
-import type { ContentPackCategory, PropConnector } from '../content-packs/types'
+import type { AssetBrowserCategory, AssetBrowserSubcategory, ContentPackCategory, PropConnector } from '../content-packs/types'
+import { getAssetBrowserCategory, getAssetBrowserSubcategory } from '../content-packs/browserMetadata'
 import { createGeneratedCharacterAssetId, syncGeneratedCharacterAssets } from '../content-packs/runtimeRegistry'
 import {
   createDefaultGeneratedCharacterInput,
@@ -44,6 +45,10 @@ export type SurfaceBrushAssetIds = {
 export type CharacterSheetState = {
   open: boolean
   assetId: string | null
+}
+export type AssetBrowserState = {
+  category: AssetBrowserCategory
+  subcategory: AssetBrowserSubcategory | null
 }
 
 export type FloorRecord = {
@@ -181,6 +186,7 @@ type DungeonState = DungeonSnapshot & {
   floorViewMode: FloorViewMode
   generatedCharacters: Record<string, GeneratedCharacterRecord>
   characterSheet: CharacterSheetState
+  assetBrowser: AssetBrowserState
   activeCameraMode: CameraPreset
   cameraPreset: CameraPreset | null
   previousCameraPreset: CameraPreset | null
@@ -208,6 +214,9 @@ type DungeonState = DungeonSnapshot & {
   setWallConnectionWidth: (width: 1 | 2 | 3) => void
   setSelectedAsset: (category: ContentPackCategory, assetId: string) => void
   setSurfaceBrushAsset: (category: keyof SurfaceBrushAssetIds, assetId: string) => void
+  setAssetBrowserCategory: (category: AssetBrowserCategory) => void
+  setAssetBrowserSubcategory: (subcategory: AssetBrowserSubcategory | null) => void
+  focusAssetBrowserForAsset: (assetId: string | null) => void
   setFloorTileAsset: (cellKey: string, assetId: string | null) => boolean
   setWallSurfaceAsset: (wallKey: string, assetId: string | null) => boolean
   setPaintingStrokeActive: (active: boolean) => void
@@ -379,6 +388,13 @@ function createEmptySnapshot(): DungeonSnapshot {
     activeLayerId: DEFAULT_LAYER_ID,
     rooms: {},
     nextRoomNumber: 1,
+  }
+}
+
+function createDefaultAssetBrowserState(): AssetBrowserState {
+  return {
+    category: 'furniture',
+    subcategory: null,
   }
 }
 
@@ -738,6 +754,7 @@ export const useDungeonStore = create<DungeonState>()(
     open: false,
     assetId: null,
   },
+  assetBrowser: createDefaultAssetBrowserState(),
   fpsLimit: 60 as 0 | 30 | 60 | 120,
   activeCameraMode: 'perspective',
   cameraPreset: null,
@@ -1235,8 +1252,13 @@ export const useDungeonStore = create<DungeonState>()(
   },
   setTool: (tool) => {
     const state = get()
+    const nextTool = tool === 'opening' ? 'prop' : tool
 
-    if (state.tool === tool) {
+    if (tool === 'opening') {
+      get().focusAssetBrowserForAsset(state.selectedAssetIds.opening)
+    }
+
+    if (state.tool === nextTool) {
       return
     }
 
@@ -1244,17 +1266,18 @@ export const useDungeonStore = create<DungeonState>()(
 
     set((current) => ({
       ...current,
-      tool,
-      isRoomResizeHandleActive: tool === 'room' ? current.isRoomResizeHandleActive : false,
+      tool: nextTool,
+      isRoomResizeHandleActive: nextTool === 'room' ? current.isRoomResizeHandleActive : false,
       // When entering room mode, save current camera and switch to top-down
       // When leaving room mode, restore previous camera preset
-      previousCameraPreset: tool === 'room' ? current.activeCameraMode : current.previousCameraPreset,
-      cameraPreset: tool === 'room' 
+      previousCameraPreset: nextTool === 'room' ? current.activeCameraMode : current.previousCameraPreset,
+      cameraPreset: nextTool === 'room' 
         ? 'top-down' 
         : (current.previousCameraPreset ? current.previousCameraPreset : current.cameraPreset),
-      activeCameraMode: tool === 'room' 
+      activeCameraMode: nextTool === 'room' 
         ? 'top-down' 
         : (current.previousCameraPreset ? current.previousCameraPreset : current.activeCameraMode),
+      roomEditMode: nextTool === 'room' ? 'rooms' : current.roomEditMode,
       history: [...current.history, previousSnapshot],
       future: [],
     }))
@@ -1306,15 +1329,26 @@ export const useDungeonStore = create<DungeonState>()(
 
     const previousSnapshot = cloneSnapshot(state)
 
-    set((current) => ({
+    set((current) => {
+      const selectedAsset = getContentPackAssetById(assetId)
+      const nextBrowserState =
+        (category === 'prop' || category === 'opening') && selectedAsset
+          ? {
+              category: getAssetBrowserCategory(selectedAsset),
+              subcategory: getAssetBrowserSubcategory(selectedAsset),
+            }
+          : current.assetBrowser
+
+      return {
       ...current,
       selectedAssetIds: {
         ...current.selectedAssetIds,
         [category]: assetId,
       },
+      assetBrowser: nextBrowserState,
       history: [...current.history, previousSnapshot],
       future: [],
-    }))
+    }})
   },
   setSurfaceBrushAsset: (category, assetId) => {
     set((current) => current.surfaceBrushAssetIds[category] === assetId
@@ -1325,7 +1359,47 @@ export const useDungeonStore = create<DungeonState>()(
             ...current.surfaceBrushAssetIds,
             [category]: assetId,
           },
+          assetBrowser: {
+            category: 'surfaces',
+            subcategory: category === 'floor' ? 'floors' : 'walls',
+          },
         })
+  },
+  setAssetBrowserCategory: (category) => {
+    set((current) => current.assetBrowser.category === category
+      ? current
+      : {
+          ...current,
+          assetBrowser: {
+            category,
+            subcategory: category === 'surfaces' ? 'floors' : null,
+          },
+        })
+  },
+  setAssetBrowserSubcategory: (subcategory) => {
+    set((current) => current.assetBrowser.subcategory === subcategory
+      ? current
+      : {
+          ...current,
+          assetBrowser: {
+            ...current.assetBrowser,
+            subcategory,
+          },
+        })
+  },
+  focusAssetBrowserForAsset: (assetId) => {
+    const asset = assetId ? getContentPackAssetById(assetId) : null
+    if (!asset) {
+      return
+    }
+
+    set((current) => ({
+      ...current,
+      assetBrowser: {
+        category: getAssetBrowserCategory(asset),
+        subcategory: getAssetBrowserSubcategory(asset),
+      },
+    }))
   },
   setFloorTileAsset: (cellKey, assetId) => {
     const state = get()
@@ -1613,6 +1687,7 @@ export const useDungeonStore = create<DungeonState>()(
         },
         floorViewMode: 'active',
         characterSheet: { open: false, assetId: null },
+        assetBrowser: createDefaultAssetBrowserState(),
         activeCameraMode: 'perspective',
         cameraPreset: null,
         history: [],
@@ -1638,6 +1713,7 @@ export const useDungeonStore = create<DungeonState>()(
         cameraMode: 'orbit',
       floorViewMode: 'active',
       characterSheet: { open: false, assetId: null },
+      assetBrowser: createDefaultAssetBrowserState(),
       activeCameraMode: 'perspective',
       cameraPreset: 'perspective', // triggers camera to home position
        // Settings reset to defaults
@@ -2417,6 +2493,7 @@ export const useDungeonStore = create<DungeonState>()(
         dungeonName: parsed.name ?? current.dungeonName,
         generatedCharacters: normalizeGeneratedCharacters(current.generatedCharacters),
         characterSheet: { open: false, assetId: null },
+        assetBrowser: createDefaultAssetBrowserState(),
          isPaintingStrokeActive: false,
          isObjectDragActive: false,
          selectedRoomId: null,
@@ -2470,6 +2547,10 @@ export const useDungeonStore = create<DungeonState>()(
         }
 
         Object.assign(state, sanitizePersistedAssetReferences(state))
+        if (state.tool === 'opening') {
+          state.tool = 'prop'
+        }
+        state.assetBrowser = createDefaultAssetBrowserState()
         state.postProcessing = normalizePostProcessingSettings(
           state.postProcessing as Partial<PostProcessingSettings> | undefined,
         )

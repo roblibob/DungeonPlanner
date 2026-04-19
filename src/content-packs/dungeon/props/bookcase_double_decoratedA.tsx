@@ -9,7 +9,19 @@ export const dungeonBookcaseDoubleDecoratedaAsset = createDungeonAsset({
   modelName: 'bookcase_double_decoratedA',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    snapsTo: 'GRID',
+    connectors: [
+      {
+        point: [0, 0, 0.125],
+        type: 'WALL',
+        rotation: [0, 0, 0],
+      },
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
+    propSurface: true,
     blocksLineOfSight: false,
   },
 })

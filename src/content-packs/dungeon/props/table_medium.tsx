@@ -9,7 +9,12 @@ export const dungeonTableMediumAsset = createDungeonAsset({
   modelName: 'table_medium',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     propSurface: true,  // Items can be placed on table
     blocksLineOfSight: false,
   },

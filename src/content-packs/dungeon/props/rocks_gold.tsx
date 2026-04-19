@@ -9,7 +9,12 @@ export const dungeonRocksGoldAsset = createDungeonAsset({
   modelName: 'rocks_gold',
   transform: DUNGEON_PROP_TRANSFORM,
   metadata: {
-    connectsTo: 'FLOOR',
+    connectors: [
+      {
+        point: [0, 0, 0],
+        type: 'FLOOR',
+      },
+    ],
     blocksLineOfSight: false,
   },
 })
