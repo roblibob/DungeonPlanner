@@ -106,6 +106,7 @@ const WALL_DIRECTIONS: Record<WallDirection, { delta: GridCell; opposite: WallDi
 
 export function usePlayVisibility(): PlayVisibility {
   const tool = useDungeonStore((state) => state.tool)
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const paintedCells = useDungeonStore((state) => state.paintedCells)
   const exploredCells = useDungeonStore((state) => state.exploredCells)
   const wallOpenings = useDungeonStore((state) => state.wallOpenings)
@@ -116,7 +117,7 @@ export function usePlayVisibility(): PlayVisibility {
   const objectRegistryVersion = useObjectRegistryVersion()
 
   const workerInput = useMemo(() => {
-    if (tool !== 'play') {
+    if (tool !== 'play' || mapMode === 'outdoor') {
       return null
     }
     const playerOrigins = Object.values(placedObjects)
@@ -131,7 +132,7 @@ export function usePlayVisibility(): PlayVisibility {
       blockingCellKeys: [...blockerLookup.keys()],
       blockerLookupEntries: [...blockerLookup.entries()],
     } satisfies PlayVisibilityWorkerInput
-  }, [generatedCharacters, layers, objectRegistryVersion, paintedCells, placedObjects, tool, wallOpenings])
+  }, [generatedCharacters, layers, mapMode, objectRegistryVersion, paintedCells, placedObjects, tool, wallOpenings])
   const [visibilityData, setVisibilityData] = useState<PlayVisibilityComputation>({
     visibleCellKeys: [],
     mask: null,
@@ -152,13 +153,13 @@ export function usePlayVisibility(): PlayVisibility {
   )
 
   useEffect(() => {
-    if (tool === 'play') {
+    if (tool === 'play' && mapMode !== 'outdoor') {
       mergeExploredCells(visibilityData.visibleCellKeys)
     }
-  }, [mergeExploredCells, tool, visibilityData.visibleCellKeys])
+  }, [mapMode, mergeExploredCells, tool, visibilityData.visibleCellKeys])
 
   return useMemo(() => {
-    if (tool !== 'play') {
+    if (tool !== 'play' || mapMode === 'outdoor') {
       return {
         active: false,
         getCellVisibility: () => 'visible' as const,
@@ -198,7 +199,7 @@ export function usePlayVisibility(): PlayVisibility {
         return maxVisibility(cellVisibility, adjacentVisibility)
       },
     }
-  }, [exploredCells, generatedCharacters, mask, tool, visibilityData.visibleCellKeys])
+  }, [exploredCells, generatedCharacters, mapMode, mask, tool, visibilityData.visibleCellKeys])
 }
 
 export function computePlayVisibilityData(input: PlayVisibilityWorkerInput): PlayVisibilityComputation {
@@ -241,7 +242,7 @@ function withExploredCellKeys(
 
 export function isVisiblePlayerOrigin(
   object: DungeonObjectRecord,
-  paintedCells: PaintedCells,
+  paintedCells: PaintedCells | null,
   layers: Record<string, Layer>,
   generatedCharacters: Record<string, GeneratedCharacterRecord>,
 ) {
@@ -254,7 +255,7 @@ export function isVisiblePlayerOrigin(
     object.type === 'player' &&
     generatedCharacter?.kind !== 'npc' &&
     layers[object.layerId]?.visible !== false &&
-    Boolean(paintedCells[getCellKey(object.cell)])
+    (paintedCells ? Boolean(paintedCells[getCellKey(object.cell)]) : true)
   )
 }
 

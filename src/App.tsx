@@ -38,6 +38,7 @@ const FpsOverlay = lazy(() =>
 
 function RightPanel() {
   const tool = useDungeonStore((state) => state.tool)
+  const mapMode = useDungeonStore((state) => state.mapMode)
   return (
     <aside data-testid="editor-right-panel" className="flex h-full flex-col overflow-hidden border-l border-stone-800/80 bg-stone-950/85 backdrop-blur">
       {/* Scene graph — always visible at the top */}
@@ -55,7 +56,7 @@ function RightPanel() {
               : tool === 'move'
                 ? 'Settings'
                 : tool === 'room'
-                  ? 'Room'
+                  ? mapMode === 'outdoor' ? 'Terrain' : 'Room'
                   : tool === 'character'
                     ? 'Characters'
                   : tool === 'opening'
@@ -81,7 +82,9 @@ function RightPanel() {
 
 function App() {
   const tool = useDungeonStore((state) => state.tool)
+  const mapMode = useDungeonStore((state) => state.mapMode)
   const roomEditMode = useDungeonStore((state) => state.roomEditMode)
+  const outdoorBrushMode = useDungeonStore((state) => state.outdoorBrushMode)
   const isPlayMode = tool === 'play'
   const [debugPanelOpen, setDebugPanelOpen] = useState(false)
   const propCount = useDungeonStore(
@@ -253,7 +256,11 @@ function App() {
       ? 'Application settings and viewport controls'
         : tool === 'room'
           ? roomEditMode === 'rooms'
-            ? 'Click room to select · drag room edges to resize · rectangular rooms also show corner handles · left-drag empty space to build · right-drag to erase'
+            ? mapMode === 'outdoor'
+              ? outdoorBrushMode === 'ground-texture'
+                ? 'Left-drag to paint ground texture · right-drag to erase texture paint'
+                : 'Left-drag to paint terrain surroundings · right-drag to erase surrounding areas'
+              : 'Click room to select · drag room edges to resize · rectangular rooms also show corner handles · left-drag empty space to build · right-drag to erase'
             : roomEditMode === 'floor-variants'
               ? 'Pick a floor variant · click a painted tile to apply it · right-click to clear the tile override'
               : 'Pick a wall variant · click a wall segment to apply it · right-click to clear the wall override'
@@ -312,7 +319,7 @@ function App() {
                       : tool === 'character'
                         ? 'Characters'
                       : tool === 'room'
-                        ? 'Room'
+                        ? mapMode === 'outdoor' ? 'Terrain' : 'Room'
                         : tool === 'opening'
                           ? 'Connections'
                           : 'Prop'}

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { getDefaultAssetIdByCategory } from '../content-packs/registry'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { getContentPackAssetsByCategory, getDefaultAssetIdByCategory } from '../content-packs/registry'
 import { getCellKey, type GridCell } from '../hooks/useSnapToGrid'
 import type { ContentPackCategory, PropConnector } from '../content-packs/types'
 import { createGeneratedCharacterAssetId, syncGeneratedCharacterAssets } from '../content-packs/runtimeRegistry'
@@ -29,6 +29,15 @@ import {
   DEFAULT_POST_PROCESSING_SETTINGS,
   normalizePostProcessingSettings,
 } from '../postprocessing/tiltShiftMath'
+import {
+  DEFAULT_OUTDOOR_TERRAIN_SCULPT_RADIUS,
+  DEFAULT_OUTDOOR_TERRAIN_SCULPT_STEP,
+  applyOutdoorTerrainSculpt,
+  getOutdoorTerrainWorldPosition,
+  sampleOutdoorTerrainHeight,
+  type OutdoorTerrainHeightfield,
+  type OutdoorTerrainSculptMode,
+} from './outdoorTerrain'
 
 export { getOpeningSegments } from './openingSegments'
 
@@ -72,6 +81,17 @@ export type Room = {
   wallAssetId: string | null
 }
 
+export type MapMode = 'indoor' | 'outdoor'
+export type OutdoorTerrainDensity = 'sparse' | 'medium' | 'dense'
+export type OutdoorTerrainType = 'mixed' | 'rocks' | 'dead-forest'
+export type OutdoorGroundTextureType = 'short-grass' | 'dry-dirt' | 'rough-stone' | 'wet-dirt'
+export type OutdoorBrushMode = 'surroundings' | 'ground-texture' | 'terrain-sculpt'
+export type OutdoorTerrainProfile = {
+  density: OutdoorTerrainDensity
+  overpaintRegenerate: boolean
+}
+export type { OutdoorTerrainHeightfield, OutdoorTerrainSculptMode } from './outdoorTerrain'
+
 export type PaintedCellRecord = {
   cell: GridCell
   layerId: string
@@ -79,6 +99,18 @@ export type PaintedCellRecord = {
 }
 
 export type PaintedCells = Record<string, PaintedCellRecord>
+export type BlockedCellRecord = {
+  cell: GridCell
+  layerId: string
+  roomId: null
+}
+export type BlockedCells = Record<string, BlockedCellRecord>
+export type OutdoorGroundTextureCellRecord = {
+  cell: GridCell
+  layerId: string
+  textureType: OutdoorGroundTextureType
+}
+export type OutdoorGroundTextureCells = Record<string, OutdoorGroundTextureCellRecord>
 
 export type OpeningRecord = {
   id: string
@@ -113,6 +145,9 @@ export type DungeonObjectRecord = {
 
 type DungeonSnapshot = {
   paintedCells: PaintedCells
+  blockedCells: BlockedCells
+  outdoorTerrainHeights: OutdoorTerrainHeightfield
+  outdoorGroundTextureCells: OutdoorGroundTextureCells
   exploredCells: Record<string, true>
   floorTileAssetIds: Record<string, string>
   wallSurfaceAssetIds: Record<string, string>
@@ -162,6 +197,17 @@ export type WallConnectionMode = 'wall' | 'door' | 'open'
 export type FloorViewMode = 'active' | 'scene'
 
 type DungeonState = DungeonSnapshot & {
+  mapMode: MapMode
+  outdoorTimeOfDay: number
+  outdoorTerrainDensity: OutdoorTerrainDensity
+  outdoorTerrainType: OutdoorTerrainType
+  outdoorOverpaintRegenerate: boolean
+  outdoorTerrainProfiles: Record<OutdoorTerrainType, OutdoorTerrainProfile>
+  outdoorBrushMode: OutdoorBrushMode
+  outdoorTerrainSculptMode: OutdoorTerrainSculptMode
+  outdoorTerrainSculptStep: number
+  outdoorTerrainSculptRadius: number
+  outdoorGroundTextureBrush: OutdoorGroundTextureType
   cameraMode: CameraMode
   isPaintingStrokeActive: boolean
   isObjectDragActive: boolean
@@ -187,6 +233,11 @@ type DungeonState = DungeonSnapshot & {
   future: DungeonSnapshot[]
   paintCells: (cells: GridCell[]) => number
   eraseCells: (cells: GridCell[]) => number
+  paintBlockedCells: (cells: GridCell[]) => number
+  eraseBlockedCells: (cells: GridCell[]) => number
+  sculptOutdoorTerrain: (cells: GridCell[], mode?: OutdoorTerrainSculptMode) => number
+  paintOutdoorGroundTextureCells: (cells: GridCell[]) => number
+  eraseOutdoorGroundTextureCells: (cells: GridCell[]) => number
   placeObject: (input: PlaceObjectInput) => string | null
   moveObject: (id: string, input: MoveObjectInput) => boolean
   setObjectProps: (id: string, props: Record<string, unknown>) => boolean
@@ -200,6 +251,7 @@ type DungeonState = DungeonSnapshot & {
   clearSelection: () => void
   selectObject: (id: string | null) => void
   setTool: (tool: DungeonTool) => void
+  setMapMode: (mode: MapMode) => void
   selectRoom: (id: string | null) => void
   setRoomResizeHandleActive: (active: boolean) => void
   setRoomEditMode: (mode: RoomEditMode) => void
@@ -213,6 +265,13 @@ type DungeonState = DungeonSnapshot & {
   setObjectDragActive: (active: boolean) => void
   setSceneLightingIntensity: (intensity: number) => void
   setPostProcessing: (settings: Partial<PostProcessingSettings>) => void
+  setOutdoorTimeOfDay: (value: number) => void
+  setOutdoorTerrainDensity: (value: OutdoorTerrainDensity) => void
+  setOutdoorTerrainType: (value: OutdoorTerrainType) => void
+  setOutdoorOverpaintRegenerate: (value: boolean) => void
+  setOutdoorBrushMode: (value: OutdoorBrushMode) => void
+  setOutdoorTerrainSculptMode: (value: OutdoorTerrainSculptMode) => void
+  setOutdoorGroundTextureBrush: (value: OutdoorGroundTextureType) => void
   setShowGrid: (show: boolean) => void
   setShowLosDebugMask: (show: boolean) => void
   setShowLosDebugRays: (show: boolean) => void
@@ -232,7 +291,7 @@ type DungeonState = DungeonSnapshot & {
   undo: () => void
   redo: () => void
   reset: () => void
-  newDungeon: () => void
+  newDungeon: (mode?: MapMode) => void
   // Layer actions
   addLayer: (name: string) => string
   removeLayer: (id: string) => void
@@ -283,6 +342,70 @@ const CONNECTOR_DIRECTIONS: Array<{
 ]
 
 const DEFAULT_LAYER_ID = 'default'
+const SURROUNDING_FOREST_TAG = 'surrounding-forest'
+const DEFAULT_OUTDOOR_TERRAIN_PROFILES: Record<OutdoorTerrainType, OutdoorTerrainProfile> = {
+  mixed: { density: 'medium', overpaintRegenerate: false },
+  rocks: { density: 'medium', overpaintRegenerate: false },
+  'dead-forest': { density: 'medium', overpaintRegenerate: false },
+}
+
+const KAYKIT_FOREST_PROP_IDS = getContentPackAssetsByCategory('prop')
+  .map((asset) => asset.id)
+  .filter((id) => id.startsWith('kaykit.forest_'))
+
+const FOREST_TREE_ASSET_IDS = KAYKIT_FOREST_PROP_IDS.filter(
+  (id) => id.startsWith('kaykit.forest_tree_') && !id.startsWith('kaykit.forest_tree_bare_'),
+)
+const FOREST_BARE_TREE_ASSET_IDS = KAYKIT_FOREST_PROP_IDS.filter((id) =>
+  id.startsWith('kaykit.forest_tree_bare_'),
+)
+const FOREST_BUSH_ASSET_IDS = KAYKIT_FOREST_PROP_IDS.filter((id) => id.startsWith('kaykit.forest_bush_'))
+const FOREST_ROCK_ASSET_IDS = KAYKIT_FOREST_PROP_IDS.filter((id) => id.startsWith('kaykit.forest_rock_'))
+const FOREST_GRASS_ASSET_IDS = KAYKIT_FOREST_PROP_IDS.filter((id) => id.startsWith('kaykit.forest_grass_'))
+const FLAT_SMALL_ROCK_ASSET_IDS = ensureAssetPool(
+  FOREST_ROCK_ASSET_IDS.filter((id) =>
+    [
+      'kaykit.forest_rock_2_a',
+      'kaykit.forest_rock_2_f',
+      'kaykit.forest_rock_3_j',
+      'kaykit.forest_rock_3_k',
+      'kaykit.forest_rock_3_l',
+      'kaykit.forest_rock_3_r',
+    ].includes(id),
+  ),
+  ['kaykit.forest_rock_2_a'],
+)
+
+const MIXED_PRIMARY_ASSETS = ensureAssetPool(
+  [...FOREST_TREE_ASSET_IDS, ...FOREST_BUSH_ASSET_IDS, ...FOREST_GRASS_ASSET_IDS],
+  ['kaykit.forest_tree_1_a', 'kaykit.forest_tree_2_a', 'kaykit.forest_bush_1_a', 'kaykit.forest_grass_1_a'],
+)
+const MIXED_SECONDARY_ASSETS = ensureAssetPool(
+  [...FOREST_GRASS_ASSET_IDS, ...FOREST_BUSH_ASSET_IDS, ...FLAT_SMALL_ROCK_ASSET_IDS],
+  ['kaykit.forest_bush_2_a', 'kaykit.forest_rock_2_a'],
+)
+const ROCK_PRIMARY_ASSETS = ensureAssetPool(FOREST_ROCK_ASSET_IDS, [
+  'kaykit.forest_rock_1_a',
+  'kaykit.forest_rock_2_a',
+  'kaykit.forest_rock_3_a',
+])
+const ROCK_SECONDARY_ASSETS = ensureAssetPool(FOREST_ROCK_ASSET_IDS, [
+  'kaykit.forest_rock_1_a',
+  'kaykit.forest_rock_2_a',
+])
+const DEAD_FOREST_PRIMARY_ASSETS = ensureAssetPool(
+  [...FOREST_BARE_TREE_ASSET_IDS, ...FOREST_GRASS_ASSET_IDS],
+  ['kaykit.forest_tree_bare_1_a', 'kaykit.forest_grass_1_a'],
+)
+const DEAD_FOREST_SECONDARY_ASSETS = ensureAssetPool(
+  [...FOREST_BARE_TREE_ASSET_IDS, ...FOREST_GRASS_ASSET_IDS, ...FLAT_SMALL_ROCK_ASSET_IDS],
+  ['kaykit.forest_tree_bare_1_a', 'kaykit.forest_rock_2_a'],
+)
+const DENSITY_SECONDARY_CHANCE: Record<OutdoorTerrainDensity, number> = {
+  sparse: 15,
+  medium: 35,
+  dense: 80,
+}
 
 function createDefaultLayer(): Layer {
   return { id: DEFAULT_LAYER_ID, name: 'Default', visible: true, locked: false }
@@ -294,6 +417,28 @@ function cloneSnapshot(snapshot: DungeonSnapshot): DungeonSnapshot {
       Object.entries(snapshot.paintedCells).map(([key, record]) => [
         key,
         { cell: [...record.cell] as GridCell, layerId: record.layerId, roomId: record.roomId },
+      ]),
+    ),
+    blockedCells: Object.fromEntries(
+      Object.entries(snapshot.blockedCells).map(([key, record]) => [
+        key,
+        { cell: [...record.cell] as GridCell, layerId: record.layerId, roomId: null },
+      ]),
+    ),
+    outdoorTerrainHeights: Object.fromEntries(
+      Object.entries(snapshot.outdoorTerrainHeights ?? {}).map(([key, record]) => [
+        key,
+        { cell: [...record.cell] as GridCell, height: record.height },
+      ]),
+    ),
+    outdoorGroundTextureCells: Object.fromEntries(
+      Object.entries(snapshot.outdoorGroundTextureCells).map(([key, record]) => [
+        key,
+        {
+          cell: [...record.cell] as GridCell,
+          layerId: record.layerId,
+          textureType: record.textureType,
+        },
       ]),
     ),
     exploredCells: { ...snapshot.exploredCells },
@@ -358,6 +503,9 @@ function createEmptySnapshot(): DungeonSnapshot {
   const defaultLayer = createDefaultLayer()
   return {
     paintedCells: {},
+    blockedCells: {},
+    outdoorTerrainHeights: {},
+    outdoorGroundTextureCells: {},
     exploredCells: {},
     floorTileAssetIds: {},
     wallSurfaceAssetIds: {},
@@ -383,6 +531,264 @@ function createEmptySnapshot(): DungeonSnapshot {
 
 function createObjectId() {
   return crypto.randomUUID()
+}
+
+function ensureAssetPool(pool: string[], fallback: string[]) {
+  const filtered = pool.filter(Boolean)
+  return filtered.length > 0 ? filtered : fallback
+}
+
+function hashString(value: string) {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash)
+}
+
+function getDeterministicRotation(cellKey: string, slot: number) {
+  const bucket = hashString(`${cellKey}:${slot}:rotation`) % 4
+  return bucket * (Math.PI / 2)
+}
+
+function getOutdoorPrimaryAssetId(cellKey: string, terrainType: OutdoorTerrainType) {
+  const assets = terrainType === 'rocks'
+    ? ROCK_PRIMARY_ASSETS
+    : terrainType === 'dead-forest'
+      ? DEAD_FOREST_PRIMARY_ASSETS
+      : MIXED_PRIMARY_ASSETS
+  return assets[hashString(`${cellKey}:primary`) % assets.length]
+}
+
+function getOutdoorSecondaryAssetId(cellKey: string, terrainType: OutdoorTerrainType) {
+  const assets = terrainType === 'rocks'
+    ? ROCK_SECONDARY_ASSETS
+    : terrainType === 'dead-forest'
+      ? DEAD_FOREST_SECONDARY_ASSETS
+      : MIXED_SECONDARY_ASSETS
+  return assets[hashString(`${cellKey}:secondary`) % assets.length]
+}
+
+function shouldPlaceOutdoorSecondary(cellKey: string, density: OutdoorTerrainDensity) {
+  return hashString(`${cellKey}:secondary-toggle`) % 100 < DENSITY_SECONDARY_CHANCE[density]
+}
+
+function normalizeOutdoorTerrainProfiles(
+  profiles: Partial<Record<OutdoorTerrainType, Partial<OutdoorTerrainProfile>>> | undefined,
+): Record<OutdoorTerrainType, OutdoorTerrainProfile> {
+  const normalized = { ...DEFAULT_OUTDOOR_TERRAIN_PROFILES }
+  if (!profiles) {
+    return normalized
+  }
+
+  ;(['mixed', 'rocks', 'dead-forest'] as const).forEach((type) => {
+    const profile = profiles[type]
+    if (!profile) {
+      return
+    }
+
+    normalized[type] = {
+      density:
+        profile.density === 'sparse' || profile.density === 'medium' || profile.density === 'dense'
+          ? profile.density
+          : normalized[type].density,
+      overpaintRegenerate:
+        typeof profile.overpaintRegenerate === 'boolean'
+          ? profile.overpaintRegenerate
+          : normalized[type].overpaintRegenerate,
+    }
+  })
+
+  return normalized
+}
+
+function getOutdoorTerrainProfile(
+  terrainType: OutdoorTerrainType,
+  profiles: Record<OutdoorTerrainType, OutdoorTerrainProfile>,
+) {
+  return profiles[terrainType] ?? DEFAULT_OUTDOOR_TERRAIN_PROFILES[terrainType]
+}
+
+function createForestPrimaryObject({
+  cell,
+  cellKey,
+  layerId,
+  terrainType,
+  outdoorTerrainHeights,
+}: {
+  cell: GridCell
+  cellKey: string
+  layerId: string
+  terrainType: OutdoorTerrainType
+  outdoorTerrainHeights: OutdoorTerrainHeightfield
+}): DungeonObjectRecord {
+  const worldPosition = getOutdoorTerrainWorldPosition(cell, outdoorTerrainHeights)
+  return {
+    id: `surrounding:${SURROUNDING_FOREST_TAG}:${cellKey}:primary`,
+    type: 'prop',
+    assetId: getOutdoorPrimaryAssetId(cellKey, terrainType),
+    position: [worldPosition[0], worldPosition[1], worldPosition[2]],
+    rotation: [0, getDeterministicRotation(cellKey, 0), 0],
+    cell: [...cell] as GridCell,
+    cellKey: `${cellKey}:floor`,
+    supportCellKey: cellKey,
+    props: {
+      connector: 'FLOOR',
+      direction: null,
+      generatedBy: SURROUNDING_FOREST_TAG,
+      surroundingType: terrainType,
+    },
+    layerId,
+  }
+}
+
+function createForestSecondaryObject({
+  cell,
+  cellKey,
+  layerId,
+  terrainType,
+  outdoorTerrainHeights,
+}: {
+  cell: GridCell
+  cellKey: string
+  layerId: string
+  terrainType: OutdoorTerrainType
+  outdoorTerrainHeights: OutdoorTerrainHeightfield
+}): DungeonObjectRecord {
+  const worldPosition = getOutdoorTerrainWorldPosition(cell, outdoorTerrainHeights)
+  const offsetX = ((hashString(`${cellKey}:offset-x`) % 100) / 100 - 0.5) * 1.1
+  const offsetZ = ((hashString(`${cellKey}:offset-z`) % 100) / 100 - 0.5) * 1.1
+  return {
+    id: `surrounding:${SURROUNDING_FOREST_TAG}:${cellKey}:secondary`,
+    type: 'prop',
+    assetId: getOutdoorSecondaryAssetId(cellKey, terrainType),
+    position: [worldPosition[0] + offsetX, worldPosition[1], worldPosition[2] + offsetZ],
+    rotation: [0, getDeterministicRotation(cellKey, 1), 0],
+    cell: [...cell] as GridCell,
+    cellKey: `${cellKey}:surrounding:secondary`,
+    supportCellKey: cellKey,
+    props: {
+      connector: 'FREE',
+      direction: null,
+      generatedBy: SURROUNDING_FOREST_TAG,
+      surroundingType: terrainType,
+    },
+    layerId,
+  }
+}
+
+function isOutdoorGroundSupportedObject(object: DungeonObjectRecord) {
+  if (object.parentObjectId) {
+    return false
+  }
+
+  const connector = object.props.connector
+  return object.type === 'player' || connector === 'FLOOR' || connector === 'FREE'
+}
+
+function reanchorOutdoorPlacedObjects(
+  placedObjects: Record<string, DungeonObjectRecord>,
+  outdoorTerrainHeights: OutdoorTerrainHeightfield,
+  targetCellKeys?: Set<string>,
+) {
+  let nextPlacedObjects = placedObjects
+
+  Object.values(placedObjects).forEach((object) => {
+    if (!isOutdoorGroundSupportedObject(object)) {
+      return
+    }
+
+    const supportCellKey = object.supportCellKey ?? getCellKey(object.cell)
+    if (targetCellKeys && !targetCellKeys.has(supportCellKey)) {
+      return
+    }
+
+    const nextY = sampleOutdoorTerrainHeight(
+      outdoorTerrainHeights,
+      object.position[0],
+      object.position[2],
+    )
+
+    if (Math.abs(object.position[1] - nextY) < 0.0001) {
+      return
+    }
+
+    if (nextPlacedObjects === placedObjects) {
+      nextPlacedObjects = { ...placedObjects }
+    }
+
+    nextPlacedObjects[object.id] = {
+      ...object,
+      position: [object.position[0], nextY, object.position[2]],
+    }
+    updateDescendantWorldTransforms(nextPlacedObjects, object.id)
+  })
+
+  return nextPlacedObjects
+}
+
+function isSurroundingGeneratedObject(object: DungeonObjectRecord) {
+  return object.props.generatedBy === SURROUNDING_FOREST_TAG
+}
+
+function removeSurroundingObjectsForCell(
+  current: MutableObjectMaps,
+  targetCellKey: string,
+) {
+  const objectIds = Object.values(current.placedObjects)
+    .filter((object) => isSurroundingGeneratedObject(object))
+    .filter((object) => (object.supportCellKey ?? getCellKey(object.cell)) === targetCellKey)
+    .map((object) => object.id)
+
+  objectIds.forEach((objectId) => {
+    removeObjectHierarchy(current, objectId)
+  })
+}
+
+function placeSurroundingForestForCell({
+  current,
+  cell,
+  layerId,
+  terrainType,
+  density,
+  regenerate,
+  outdoorTerrainHeights,
+}: {
+  current: MutableObjectMaps
+  cell: GridCell
+  layerId: string
+  terrainType: OutdoorTerrainType
+  density: OutdoorTerrainDensity
+  regenerate: boolean
+  outdoorTerrainHeights: OutdoorTerrainHeightfield
+}) {
+  const cellKey = getCellKey(cell)
+  if (regenerate) {
+    removeSurroundingObjectsForCell(current, cellKey)
+  }
+  const floorAnchorKey = `${cellKey}:floor`
+  const occupiedBy = current.occupancy[floorAnchorKey]
+
+  if (occupiedBy) {
+    const existing = current.placedObjects[occupiedBy]
+    if (existing && isSurroundingGeneratedObject(existing)) {
+      removeObjectHierarchy(current, existing.id)
+    }
+  }
+
+  if (!current.occupancy[floorAnchorKey]) {
+    const primary = createForestPrimaryObject({ cell, cellKey, layerId, terrainType, outdoorTerrainHeights })
+    current.placedObjects[primary.id] = primary
+    current.occupancy[floorAnchorKey] = primary.id
+  }
+
+  const secondaryId = `surrounding:${SURROUNDING_FOREST_TAG}:${cellKey}:secondary`
+  if (shouldPlaceOutdoorSecondary(cellKey, density)) {
+    const secondary = createForestSecondaryObject({ cell, cellKey, layerId, terrainType, outdoorTerrainHeights })
+    current.placedObjects[secondary.id] = secondary
+  } else if (current.placedObjects[secondaryId]) {
+    removeObjectHierarchy(current, secondaryId)
+  }
 }
 
 function normalizeGeneratedCharacters(
@@ -703,6 +1109,35 @@ function pruneInvalidSurfaceOverrides(
   return { floorTileAssetIds, wallSurfaceAssetIds }
 }
 
+const FALLBACK_PERSIST_STORAGE: Storage = {
+  getItem: () => null,
+  setItem: () => undefined,
+  removeItem: () => undefined,
+  clear: () => undefined,
+  key: () => null,
+  get length() {
+    return 0
+  },
+}
+
+function getPersistStorage() {
+  if (typeof window === 'undefined') {
+    return FALLBACK_PERSIST_STORAGE
+  }
+
+  const storage = window.localStorage
+  if (
+    storage &&
+    typeof storage.getItem === 'function' &&
+    typeof storage.setItem === 'function' &&
+    typeof storage.removeItem === 'function'
+  ) {
+    return storage
+  }
+
+  return FALLBACK_PERSIST_STORAGE
+}
+
 export const useDungeonStore = create<DungeonState>()(
   persist(
     (set, get) => {
@@ -711,6 +1146,17 @@ export const useDungeonStore = create<DungeonState>()(
 
   return ({
   ...initialSnapshot,
+  mapMode: 'indoor' as MapMode,
+  outdoorTimeOfDay: 0.5,
+  outdoorTerrainType: 'mixed' as OutdoorTerrainType,
+  outdoorTerrainProfiles: normalizeOutdoorTerrainProfiles(undefined),
+  outdoorTerrainDensity: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.density,
+  outdoorOverpaintRegenerate: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.overpaintRegenerate,
+  outdoorBrushMode: 'surroundings' as OutdoorBrushMode,
+  outdoorTerrainSculptMode: 'raise' as OutdoorTerrainSculptMode,
+  outdoorTerrainSculptStep: DEFAULT_OUTDOOR_TERRAIN_SCULPT_STEP,
+  outdoorTerrainSculptRadius: DEFAULT_OUTDOOR_TERRAIN_SCULPT_RADIUS,
+  outdoorGroundTextureBrush: 'short-grass' as OutdoorGroundTextureType,
   dungeonName: 'My Dungeon',
   cameraMode: 'orbit',
   isPaintingStrokeActive: false,
@@ -818,6 +1264,205 @@ export const useDungeonStore = create<DungeonState>()(
 
     return nextCells.length
   },
+  paintBlockedCells: (cells) => {
+    const state = get()
+    if (state.mapMode !== 'outdoor') {
+      return 0
+    }
+    const activeProfile = getOutdoorTerrainProfile(state.outdoorTerrainType, state.outdoorTerrainProfiles)
+    const nextCells = activeProfile.overpaintRegenerate
+      ? cells
+      : cells.filter((cell) => !state.blockedCells[getCellKey(cell)])
+    if (nextCells.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      const blockedCells = { ...current.blockedCells }
+      let placedObjects = { ...current.placedObjects }
+      const occupancy = { ...current.occupancy }
+      nextCells.forEach((cell) => {
+        const cellKey = getCellKey(cell)
+        blockedCells[cellKey] = {
+          cell: [...cell] as GridCell,
+          layerId: current.activeLayerId,
+          roomId: null,
+        }
+        placeSurroundingForestForCell({
+          current: { placedObjects, occupancy },
+          cell,
+          layerId: current.activeLayerId,
+          terrainType: current.outdoorTerrainType,
+          density: getOutdoorTerrainProfile(current.outdoorTerrainType, current.outdoorTerrainProfiles).density,
+          regenerate: getOutdoorTerrainProfile(
+            current.outdoorTerrainType,
+            current.outdoorTerrainProfiles,
+          ).overpaintRegenerate,
+          outdoorTerrainHeights: current.outdoorTerrainHeights,
+        })
+      })
+      placedObjects = reanchorOutdoorPlacedObjects(
+        placedObjects,
+        current.outdoorTerrainHeights,
+        new Set(nextCells.map((cell) => getCellKey(cell))),
+      )
+      return {
+        ...current,
+        blockedCells,
+        placedObjects,
+        occupancy,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+    return nextCells.length
+  },
+  eraseBlockedCells: (cells) => {
+    const state = get()
+    const nextKeys = cells
+      .map((cell) => getCellKey(cell))
+      .filter((key) => Boolean(state.blockedCells[key]))
+
+    if (nextKeys.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      const blockedCells = { ...current.blockedCells }
+      const placedObjects = { ...current.placedObjects }
+      const occupancy = { ...current.occupancy }
+      let selection = current.selection
+      nextKeys.forEach((key) => {
+        delete blockedCells[key]
+        removeSurroundingObjectsForCell({ placedObjects, occupancy }, key)
+        if (selection && !placedObjects[selection]) {
+          selection = null
+        }
+      })
+
+      return {
+        ...current,
+        blockedCells,
+        placedObjects,
+        occupancy,
+        selection,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+
+    return nextKeys.length
+  },
+  sculptOutdoorTerrain: (cells, mode) => {
+    const state = get()
+    if (state.mapMode !== 'outdoor' || cells.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    const sculptMode = mode ?? state.outdoorTerrainSculptMode
+    const targetCellKeys = new Set(cells.map((cell) => getCellKey(cell)))
+
+    set((current) => {
+      const outdoorTerrainHeights = applyOutdoorTerrainSculpt(
+        current.outdoorTerrainHeights,
+        cells,
+        sculptMode,
+        current.outdoorTerrainSculptStep,
+        current.outdoorTerrainSculptRadius,
+      )
+      const placedObjects = reanchorOutdoorPlacedObjects(
+        current.placedObjects,
+        outdoorTerrainHeights,
+        targetCellKeys,
+      )
+
+      if (
+        outdoorTerrainHeights === current.outdoorTerrainHeights &&
+        placedObjects === current.placedObjects
+      ) {
+        return current
+      }
+
+      return {
+        ...current,
+        outdoorTerrainHeights,
+        placedObjects,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+
+    return cells.length
+  },
+  paintOutdoorGroundTextureCells: (cells) => {
+    const state = get()
+    if (state.mapMode !== 'outdoor') {
+      return 0
+    }
+    const nextCells = cells.filter((cell) => {
+      const cellKey = getCellKey(cell)
+      return state.outdoorGroundTextureCells[cellKey]?.textureType !== state.outdoorGroundTextureBrush
+    })
+    if (nextCells.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      if (current.mapMode !== 'outdoor') {
+        return current
+      }
+      const outdoorGroundTextureCells = { ...current.outdoorGroundTextureCells }
+      nextCells.forEach((cell) => {
+        const cellKey = getCellKey(cell)
+        outdoorGroundTextureCells[cellKey] = {
+          cell: [...cell] as GridCell,
+          layerId: current.activeLayerId,
+          textureType: current.outdoorGroundTextureBrush,
+        }
+      })
+      return {
+        ...current,
+        outdoorGroundTextureCells,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+    return nextCells.length
+  },
+  eraseOutdoorGroundTextureCells: (cells) => {
+    const state = get()
+    if (state.mapMode !== 'outdoor') {
+      return 0
+    }
+    const nextKeys = cells
+      .map((cell) => getCellKey(cell))
+      .filter((key) => Boolean(state.outdoorGroundTextureCells[key]))
+    if (nextKeys.length === 0) {
+      return 0
+    }
+
+    const previousSnapshot = cloneSnapshot(state)
+    set((current) => {
+      if (current.mapMode !== 'outdoor') {
+        return current
+      }
+      const outdoorGroundTextureCells = { ...current.outdoorGroundTextureCells }
+      nextKeys.forEach((key) => {
+        delete outdoorGroundTextureCells[key]
+      })
+      return {
+        ...current,
+        outdoorGroundTextureCells,
+        history: [...current.history, previousSnapshot],
+        future: [],
+      }
+    })
+    return nextKeys.length
+  },
   eraseCells: (cells) => {
     const state = get()
     const nextKeys = cells
@@ -899,6 +1544,13 @@ export const useDungeonStore = create<DungeonState>()(
 
     const nextId = createObjectId()
     const previousSnapshot = cloneSnapshot(state)
+    const groundedOutdoorObject =
+      state.mapMode === 'outdoor' &&
+      !input.parentObjectId &&
+      (input.type === 'player' || input.props.connector === 'FLOOR' || input.props.connector === 'FREE')
+    const positionY = groundedOutdoorObject
+      ? sampleOutdoorTerrainHeight(state.outdoorTerrainHeights, input.position[0], input.position[2])
+      : input.position[1]
 
     set((current) => {
       const placedObjects = { ...current.placedObjects }
@@ -912,7 +1564,7 @@ export const useDungeonStore = create<DungeonState>()(
         id: nextId,
         type: input.type,
         assetId: input.assetId,
-        position: [...input.position] as DungeonObjectRecord['position'],
+        position: [input.position[0], positionY, input.position[2]] as DungeonObjectRecord['position'],
         rotation: [...input.rotation] as DungeonObjectRecord['rotation'],
         localPosition: input.localPosition
           ? [...input.localPosition] as DungeonObjectRecord['localPosition']
@@ -960,7 +1612,10 @@ export const useDungeonStore = create<DungeonState>()(
       return false
     }
 
-    if (!state.paintedCells[getCellKey(input.cell)]) {
+    if (state.mapMode !== 'outdoor' && !state.paintedCells[getCellKey(input.cell)]) {
+      return false
+    }
+    if (state.mapMode === 'outdoor' && state.blockedCells[getCellKey(input.cell)]) {
       return false
     }
 
@@ -969,11 +1624,18 @@ export const useDungeonStore = create<DungeonState>()(
       return false
     }
 
+    const nextPositionY =
+      state.mapMode === 'outdoor'
+        ? sampleOutdoorTerrainHeight(state.outdoorTerrainHeights, input.position[0], input.position[2])
+        : input.position[1]
+
     const unchanged =
       object.cellKey === input.cellKey &&
       object.cell[0] === input.cell[0] &&
       object.cell[1] === input.cell[1] &&
-      object.position.every((value, index) => value === input.position[index])
+      object.position[0] === input.position[0] &&
+      object.position[1] === nextPositionY &&
+      object.position[2] === input.position[2]
 
     if (unchanged) {
       return true
@@ -991,7 +1653,7 @@ export const useDungeonStore = create<DungeonState>()(
         ...current.placedObjects,
         [id]: {
           ...currentObject,
-          position: [...input.position] as DungeonObjectRecord['position'],
+          position: [input.position[0], nextPositionY, input.position[2]] as DungeonObjectRecord['position'],
           cell: [...input.cell] as GridCell,
           cellKey: input.cellKey,
           supportCellKey: getCellKey(input.cell),
@@ -1233,8 +1895,11 @@ export const useDungeonStore = create<DungeonState>()(
   },
   setTool: (tool) => {
     const state = get()
+    const normalizedTool = state.mapMode === 'outdoor' && tool === 'opening'
+      ? 'prop'
+      : tool
 
-    if (state.tool === tool) {
+    if (state.tool === normalizedTool) {
       return
     }
 
@@ -1242,13 +1907,24 @@ export const useDungeonStore = create<DungeonState>()(
 
     set((current) => ({
       ...current,
-      tool,
-      isRoomResizeHandleActive: tool === 'room' ? current.isRoomResizeHandleActive : false,
-      cameraPreset: tool === 'room' ? 'top-down' : current.cameraPreset,
-      activeCameraMode: tool === 'room' ? 'top-down' : current.activeCameraMode,
+      tool: normalizedTool,
+      isRoomResizeHandleActive: normalizedTool === 'room' ? current.isRoomResizeHandleActive : false,
+      cameraPreset: normalizedTool === 'room' ? 'top-down' : current.cameraPreset,
+      activeCameraMode: normalizedTool === 'room' ? 'top-down' : current.activeCameraMode,
       history: [...current.history, previousSnapshot],
       future: [],
     }))
+  },
+  setMapMode: (mode) => {
+    set((state) => (state.mapMode === mode
+      ? state
+      : {
+          ...state,
+          mapMode: mode,
+          tool: mode === 'outdoor' && state.tool === 'opening' ? 'prop' : state.tool,
+          roomEditMode: 'rooms',
+          outdoorBrushMode: mode === 'outdoor' ? state.outdoorBrushMode : 'surroundings',
+        }))
   },
   selectRoom: (id) => {
     set((current) => ({
@@ -1420,6 +2096,75 @@ export const useDungeonStore = create<DungeonState>()(
       ...state,
       postProcessing: normalizePostProcessingSettings({ ...state.postProcessing, ...settings }),
     }))
+  },
+  setOutdoorTimeOfDay: (value) => {
+    const clamped = Math.max(0, Math.min(1, value))
+    set((state) => ({ ...state, outdoorTimeOfDay: clamped }))
+  },
+  setOutdoorTerrainDensity: (value) => {
+    set((state) => {
+      if (state.outdoorTerrainDensity === value) {
+        return state
+      }
+
+      return {
+        ...state,
+        outdoorTerrainDensity: value,
+        outdoorTerrainProfiles: {
+          ...state.outdoorTerrainProfiles,
+          [state.outdoorTerrainType]: {
+            ...getOutdoorTerrainProfile(state.outdoorTerrainType, state.outdoorTerrainProfiles),
+            density: value,
+          },
+        },
+      }
+    })
+  },
+  setOutdoorTerrainType: (value) => {
+    set((state) => {
+      if (state.outdoorTerrainType === value) {
+        return state
+      }
+      const nextProfile = getOutdoorTerrainProfile(value, state.outdoorTerrainProfiles)
+      return {
+        ...state,
+        outdoorTerrainType: value,
+        outdoorTerrainDensity: nextProfile.density,
+        outdoorOverpaintRegenerate: nextProfile.overpaintRegenerate,
+      }
+    })
+  },
+  setOutdoorOverpaintRegenerate: (value) => {
+    set((state) => {
+      if (state.outdoorOverpaintRegenerate === value) {
+        return state
+      }
+
+      return {
+        ...state,
+        outdoorOverpaintRegenerate: value,
+        outdoorTerrainProfiles: {
+          ...state.outdoorTerrainProfiles,
+          [state.outdoorTerrainType]: {
+            ...getOutdoorTerrainProfile(state.outdoorTerrainType, state.outdoorTerrainProfiles),
+            overpaintRegenerate: value,
+          },
+        },
+      }
+    })
+  },
+  setOutdoorBrushMode: (value) => {
+    set((state) => (state.outdoorBrushMode === value ? state : { ...state, outdoorBrushMode: value }))
+  },
+  setOutdoorTerrainSculptMode: (value) => {
+    set((state) => (state.outdoorTerrainSculptMode === value
+      ? state
+      : { ...state, outdoorTerrainSculptMode: value }))
+  },
+  setOutdoorGroundTextureBrush: (value) => {
+    set((state) => (state.outdoorGroundTextureBrush === value
+      ? state
+      : { ...state, outdoorGroundTextureBrush: value }))
   },
   setShowGrid: (show) => {
     set((state) => ({ ...state, showGrid: show }))
@@ -1594,6 +2339,17 @@ export const useDungeonStore = create<DungeonState>()(
       set((state) => ({
         ...state,
         ...createEmptySnapshot(),
+        mapMode: 'indoor',
+        outdoorTimeOfDay: 0.5,
+        outdoorTerrainType: 'mixed',
+        outdoorTerrainProfiles: normalizeOutdoorTerrainProfiles(undefined),
+        outdoorTerrainDensity: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.density,
+        outdoorOverpaintRegenerate: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.overpaintRegenerate,
+        outdoorBrushMode: 'surroundings',
+        outdoorTerrainSculptMode: 'raise',
+        outdoorTerrainSculptStep: DEFAULT_OUTDOOR_TERRAIN_SCULPT_STEP,
+        outdoorTerrainSculptRadius: DEFAULT_OUTDOOR_TERRAIN_SCULPT_RADIUS,
+        outdoorGroundTextureBrush: 'short-grass',
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
         selectedRoomId: null,
@@ -1603,6 +2359,7 @@ export const useDungeonStore = create<DungeonState>()(
           wall: getDefaultAssetIdByCategory('wall'),
         },
         floorViewMode: 'active',
+        tool: 'move',
         characterSheet: { open: false, assetId: null },
         activeCameraMode: 'perspective',
         cameraPreset: null,
@@ -1611,12 +2368,23 @@ export const useDungeonStore = create<DungeonState>()(
     }))
   },
 
-  newDungeon: () => {
+  newDungeon: (mode = 'indoor') => {
     const INITIAL_ID = 'floor-1'
     const fresh = createEmptySnapshot()
     set({
       // Snapshot (rooms, cells, objects, etc.)
-       ...fresh,
+         ...fresh,
+         mapMode: mode,
+         outdoorTimeOfDay: 0.5,
+         outdoorTerrainType: 'mixed',
+         outdoorTerrainProfiles: normalizeOutdoorTerrainProfiles(undefined),
+         outdoorTerrainDensity: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.density,
+         outdoorOverpaintRegenerate: DEFAULT_OUTDOOR_TERRAIN_PROFILES.mixed.overpaintRegenerate,
+         outdoorBrushMode: 'surroundings',
+         outdoorTerrainSculptMode: 'raise',
+         outdoorTerrainSculptStep: DEFAULT_OUTDOOR_TERRAIN_SCULPT_STEP,
+         outdoorTerrainSculptRadius: DEFAULT_OUTDOOR_TERRAIN_SCULPT_RADIUS,
+         outdoorGroundTextureBrush: 'short-grass',
         // UI / tool state
         isPaintingStrokeActive: false,
         isObjectDragActive: false,
@@ -1627,6 +2395,7 @@ export const useDungeonStore = create<DungeonState>()(
           wall: getDefaultAssetIdByCategory('wall'),
         },
         cameraMode: 'orbit',
+        tool: mode === 'outdoor' ? 'room' : fresh.tool,
       floorViewMode: 'active',
       characterSheet: { open: false, assetId: null },
       activeCameraMode: 'perspective',
@@ -2370,6 +3139,13 @@ export const useDungeonStore = create<DungeonState>()(
     }
     const json = serializeDungeon({
       name: state.dungeonName,
+      mapMode: state.mapMode,
+      outdoorTimeOfDay: state.outdoorTimeOfDay,
+      outdoorTerrainProfiles: state.outdoorTerrainProfiles,
+      outdoorTerrainDensity: state.outdoorTerrainDensity,
+      outdoorTerrainType: state.outdoorTerrainType,
+      outdoorOverpaintRegenerate: state.outdoorOverpaintRegenerate,
+      outdoorTerrainHeights: state.outdoorTerrainHeights,
       sceneLighting: state.sceneLighting,
       postProcessing: state.postProcessing,
       layers: state.layers,
@@ -2377,6 +3153,8 @@ export const useDungeonStore = create<DungeonState>()(
       activeLayerId: state.activeLayerId,
       rooms: state.rooms,
       paintedCells: state.paintedCells,
+      blockedCells: state.blockedCells,
+      outdoorGroundTextureCells: state.outdoorGroundTextureCells,
       exploredCells: state.exploredCells,
       floorTileAssetIds: state.floorTileAssetIds,
       wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -2402,9 +3180,23 @@ export const useDungeonStore = create<DungeonState>()(
     const floors = parsed.floors ?? {}
     const floorOrder = parsed.floorOrder ?? Object.keys(floors)
     const activeFloorId = parsed.activeFloorId ?? floorOrder[0] ?? 'floor-1'
+    const terrainType = parsed.outdoorTerrainType ?? 'mixed'
+    const terrainProfiles = normalizeOutdoorTerrainProfiles(parsed.outdoorTerrainProfiles)
+    const terrainProfile = getOutdoorTerrainProfile(terrainType, terrainProfiles)
       set((current) => ({
         ...current,
         ...parsed,
+        mapMode: parsed.mapMode ?? 'indoor',
+        outdoorTimeOfDay: parsed.outdoorTimeOfDay ?? 0.5,
+        outdoorTerrainType: terrainType,
+        outdoorTerrainProfiles: terrainProfiles,
+        outdoorTerrainDensity: parsed.outdoorTerrainDensity ?? terrainProfile.density,
+        outdoorOverpaintRegenerate: parsed.outdoorOverpaintRegenerate ?? terrainProfile.overpaintRegenerate,
+        outdoorBrushMode: parsed.mapMode === 'outdoor' ? 'surroundings' : current.outdoorBrushMode,
+        outdoorTerrainSculptMode: 'raise',
+        outdoorTerrainSculptStep: DEFAULT_OUTDOOR_TERRAIN_SCULPT_STEP,
+        outdoorTerrainSculptRadius: DEFAULT_OUTDOOR_TERRAIN_SCULPT_RADIUS,
+        outdoorGroundTextureBrush: 'short-grass',
         dungeonName: parsed.name ?? current.dungeonName,
         generatedCharacters: normalizeGeneratedCharacters(current.generatedCharacters),
         characterSheet: { open: false, assetId: null },
@@ -2430,10 +3222,14 @@ export const useDungeonStore = create<DungeonState>()(
   })},
     {
       name: 'dungeon-planner-state',
+      storage: createJSONStorage(getPersistStorage),
       // Only persist the dungeon content + scene settings, not transient UI state
       partialize: (state) => ({
         dungeonName: state.dungeonName,
         paintedCells: state.paintedCells,
+        blockedCells: state.blockedCells,
+        outdoorTerrainHeights: state.outdoorTerrainHeights,
+        outdoorGroundTextureCells: state.outdoorGroundTextureCells,
         exploredCells: state.exploredCells,
         floorTileAssetIds: state.floorTileAssetIds,
         wallSurfaceAssetIds: state.wallSurfaceAssetIds,
@@ -2447,6 +3243,17 @@ export const useDungeonStore = create<DungeonState>()(
         nextRoomNumber: state.nextRoomNumber,
         sceneLighting: state.sceneLighting,
         postProcessing: state.postProcessing,
+        mapMode: state.mapMode,
+        outdoorTimeOfDay: state.outdoorTimeOfDay,
+        outdoorTerrainProfiles: state.outdoorTerrainProfiles,
+        outdoorTerrainDensity: state.outdoorTerrainDensity,
+        outdoorTerrainType: state.outdoorTerrainType,
+        outdoorOverpaintRegenerate: state.outdoorOverpaintRegenerate,
+        outdoorBrushMode: state.outdoorBrushMode,
+        outdoorTerrainSculptMode: state.outdoorTerrainSculptMode,
+        outdoorTerrainSculptStep: state.outdoorTerrainSculptStep,
+        outdoorTerrainSculptRadius: state.outdoorTerrainSculptRadius,
+        outdoorGroundTextureBrush: state.outdoorGroundTextureBrush,
         selectedAssetIds: state.selectedAssetIds,
         generatedCharacters: state.generatedCharacters,
         floors: state.floors,
@@ -2461,6 +3268,10 @@ export const useDungeonStore = create<DungeonState>()(
         }
 
         Object.assign(state, sanitizePersistedAssetReferences(state))
+        state.outdoorTerrainHeights = (state.outdoorTerrainHeights ?? {}) as OutdoorTerrainHeightfield
+        state.outdoorTerrainSculptMode = state.outdoorTerrainSculptMode ?? 'raise'
+        state.outdoorTerrainSculptStep = state.outdoorTerrainSculptStep ?? DEFAULT_OUTDOOR_TERRAIN_SCULPT_STEP
+        state.outdoorTerrainSculptRadius = state.outdoorTerrainSculptRadius ?? DEFAULT_OUTDOOR_TERRAIN_SCULPT_RADIUS
         state.postProcessing = normalizePostProcessingSettings(
           state.postProcessing as Partial<PostProcessingSettings> | undefined,
         )
